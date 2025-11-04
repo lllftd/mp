@@ -390,12 +390,19 @@ class IntegratedSpider:
                                     
                                     # AI转述
                                     print(f"正在AI转述: {title[:30]}...")
-                                    paraphrased_title, paraphrased_desc, content_type = self.ai_paraphraser.paraphrase_and_classify(title, desc)
+                                    paraphrased_title, paraphrased_desc, content_type, type_cid = self.ai_paraphraser.paraphrase_and_classify(title, desc)
                                     if paraphrased_title:
                                         final_title = paraphrased_title
                                         final_desc = paraphrased_desc
                                         ai_paraphrased_count += 1
                                         print(f"✅ 转述完成: {final_title[:30]}...")
+                                    
+                                    # 如果没有获取到type_cid，使用默认值
+                                    if not type_cid:
+                                        type_cid = Config.DEFAULT_TYPE_CID if Config.DEFAULT_TYPE_CID else "10"
+                                        print(f"⚠️  使用默认子类型ID: {type_cid}")
+                                    else:
+                                        print(f"✅ AI分类完成: 子类型ID={type_cid}")
                                     
                                     # 保存原文
                                     original_filename = os.path.join(original_dir, f"{processed_count:04d}_{note_id}.txt")
@@ -450,7 +457,7 @@ class IntegratedSpider:
                                         'tweets_describe': final_desc[:200] if len(final_desc) > 200 else final_desc,
                                         'tweets_img': json.dumps(saved_image_paths) if saved_image_paths else json.dumps(img.split(',') if img else []),
                                         'tweets_type_pid': Config.DEFAULT_TYPE_PID,
-                                        'tweets_type_cid': Config.DEFAULT_TYPE_CID,
+                                        'tweets_type_cid': type_cid,  # 使用AI返回的子类型ID
                                         'tweets_user': get_random_username(),  # 随机生成用户名
                                     }
                                     tweets_data.append(tweet)

@@ -49,19 +49,170 @@ class AIParaphraser:
             logger.warning(f"检查模型失败: {e}")
             return False
     
-    def paraphrase_and_classify(self, title: str, description: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def get_type_cid_mapping(self) -> Dict[str, list]:
+        """获取分类类型到子类型ID的映射"""
+        return {
+            # 菜系分类
+            "川菜": [6],
+            "淮扬菜": [8],
+            "杭帮菜": [9],
+            "潮汕菜": [10],
+            "烧烤": [11],
+            "粤菜": [12],
+            "德国菜": [13],
+            "日本料理": [14],
+            "法国菜": [15],
+            "韩国料理": [16],
+            "新疆菜": [17],
+            "湘菜": [18],
+            "农家菜": [19],
+            "火锅": [20],
+            "咖啡厅": [21],
+            "自助餐": [22],
+            "鱼鲜": [23],
+            "东北菜": [24],
+            "私房菜": [25],
+            "东南亚菜": [26],
+            "特色菜": [27],
+            "创意菜": [28],
+            "北京菜": [29],
+            "家常菜": [30],
+            "茶餐厅": [31],
+            "小龙虾": [32],
+            "素食": [33],
+            "小吃快餐": [34],
+            "面包甜点": [35],
+            "面馆": [36],
+            "大排档": [37],
+            "西餐": [38],
+            "云南菜": [39],
+            "西北菜": [40],
+            # 价格区间（可以组合）
+            "人均50至100": [41],
+            "人均100至200": [42],
+            "人均200至300": [43],
+            "人均300以上": [44],
+            "人均50元以内": [45],
+        }
+    
+    def classify_to_type_cid(self, title: str, description: str) -> str:
         """
-        使用AI转述标题和描述，并分类
+        根据内容分类，返回对应的子类型ID（逗号分隔）
+        
+        Args:
+            title: 标题
+            description: 描述
+            
+        Returns:
+            子类型ID字符串，如 "10,42" 或 "12"
+        """
+        if not title and not description:
+            return Config.DEFAULT_TYPE_CID if Config.DEFAULT_TYPE_CID else "10"  # 默认返回潮汕菜
+        
+        try:
+            # 构建分类提示词
+            prompt = f"""请分析以下美食内容，判断属于哪个菜系和价格区间。
+
+标题：{title}
+描述：{description[:500]}
+
+可选菜系分类：
+川菜、淮扬菜、杭帮菜、潮汕菜、烧烤、粤菜、德国菜、日本料理、法国菜、韩国料理、新疆菜、湘菜、农家菜、火锅、咖啡厅、自助餐、鱼鲜、东北菜、私房菜、东南亚菜、特色菜、创意菜、北京菜、家常菜、茶餐厅、小龙虾、素食、小吃快餐、面包甜点、面馆、大排档、西餐、云南菜、西北菜
+
+可选价格区间：
+人均50元以内、人均50至100、人均100至200、人均200至300、人均300以上
+
+请以JSON格式返回结果：
+{{
+    "cuisine": "菜系名称（如：潮汕菜、粤菜等，只能选一个）",
+    "price_range": "价格区间（如：人均100至200，可选）"
+}}
+
+如果无法确定，菜系默认返回"潮汕菜"，价格区间可以不返回。"""
+
+            url = f"{self.api_base}/chat/completions"
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "你是一个专业的美食分类专家，擅长根据内容判断菜系和价格区间。"
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "max_tokens": 200,
+                "temperature": 0.3,  # 降低温度，使分类更准确
+                "stream": False
+            }
+            
+            response = requests.post(url, json=payload, timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+                
+                # 解析JSON响应
+                try:
+                    if '```json' in content:
+                        json_start = content.find('```json') + 7
+                        json_end = content.find('```', json_start)
+                        content = content[json_start:json_end].strip()
+                    elif '```' in content:
+                        json_start = content.find('```') + 3
+                        json_end = content.find('```', json_start)
+                        content = content[json_start:json_end].strip()
+                    
+                    parsed = json.loads(content)
+                    cuisine = parsed.get('cuisine', '潮汕菜')
+                    price_range = parsed.get('price_range', '')
+                    
+                    # 映射到子类型ID
+                    mapping = self.get_type_cid_mapping()
+                    cid_list = []
+                    
+                    # 添加菜系ID
+                    if cuisine in mapping:
+                        cid_list.extend(mapping[cuisine])
+                    
+                    # 添加价格区间ID
+                    if price_range and price_range in mapping:
+                        cid_list.extend(mapping[price_range])
+                    
+                    # 如果都没有匹配到，返回默认值
+                    if not cid_list:
+                        return Config.DEFAULT_TYPE_CID if Config.DEFAULT_TYPE_CID else "10"
+                    
+                    # 去重并排序
+                    cid_list = sorted(list(set(cid_list)))
+                    return ','.join(map(str, cid_list))
+                    
+                except json.JSONDecodeError:
+                    logger.warning(f"无法解析AI分类结果，使用默认值")
+                    return Config.DEFAULT_TYPE_CID if Config.DEFAULT_TYPE_CID else "10"
+            else:
+                logger.warning(f"AI分类API调用失败: {response.status_code}")
+                return Config.DEFAULT_TYPE_CID if Config.DEFAULT_TYPE_CID else "10"
+                
+        except Exception as e:
+            logger.warning(f"AI分类失败: {e}，使用默认值")
+            return Config.DEFAULT_TYPE_CID if Config.DEFAULT_TYPE_CID else "10"
+    
+    def paraphrase_and_classify(self, title: str, description: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """
+        使用AI转述标题和描述，并分类，返回子类型ID
         
         Args:
             title: 原标题
             description: 原描述
             
         Returns:
-            (转述后的标题, 转述后的描述, 分类类型) 或 (None, None, None) 如果失败
+            (转述后的标题, 转述后的描述, 分类类型, 子类型ID) 或 (None, None, None, None) 如果失败
         """
         if not title and not description:
-            return None, None, None
+            return None, None, None, None
         
         try:
             # 构建提示词
@@ -124,7 +275,10 @@ class AIParaphraser:
                     paraphrased_desc = parsed.get('description', description)
                     content_type = parsed.get('type', '生活')
                     
-                    return paraphrased_title, paraphrased_desc, content_type
+                    # 根据内容分类获取子类型ID
+                    type_cid = self.classify_to_type_cid(title, description)
+                    
+                    return paraphrased_title, paraphrased_desc, content_type, type_cid
                 except json.JSONDecodeError:
                     # 如果无法解析JSON，尝试提取文本
                     lines = content.strip().split('\n')
@@ -147,17 +301,20 @@ class AIParaphraser:
                             if len(parts) > 1:
                                 content_type = parts[1].strip().strip('"\'')
                     
-                    return paraphrased_title, paraphrased_desc, content_type
+                    # 根据内容分类获取子类型ID
+                    type_cid = self.classify_to_type_cid(title, description)
+                    
+                    return paraphrased_title, paraphrased_desc, content_type, type_cid
             else:
                 logger.error(f"AI转述API调用失败: {response.status_code} - {response.text}")
-                return None, None, None
+                return None, None, None, None
                 
         except requests.exceptions.Timeout:
             logger.error("AI转述请求超时")
-            return None, None, None
+            return None, None, None, None
         except Exception as e:
             logger.error(f"AI转述失败: {e}")
-            return None, None, None
+            return None, None, None, None
     
     def paraphrase_only(self, text: str) -> Optional[str]:
         """仅转述文本内容"""
