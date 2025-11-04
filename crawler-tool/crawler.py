@@ -21,7 +21,7 @@ from spider_config import *
 from ai_paraphrase import get_ai_paraphraser
 from database import db
 from config import Config
-from batch_upload_tweets import batch_insert_tweets
+from batch_upload_tweets import insert_tweet, prepare_tweet_data
 from username_generator import get_random_username
 
 try:
@@ -348,8 +348,9 @@ class IntegratedSpider:
         total_notes = 0
         processed_count = 0
         ai_paraphrased_count = 0
+        upload_success_count = 0
+        upload_fail_count = 0
         
-        tweets_data = []
         nowt = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         
         # 创建保存目录结构: saved/时间戳/图片、原文、转述
@@ -493,7 +494,20 @@ class IntegratedSpider:
                                                 'tweets_type_cid': type_cid,  # 使用AI返回的子类型ID
                                                 'tweets_user': get_random_username(),  # 随机生成用户名
                                             }
-                                            tweets_data.append(tweet)
+                                            
+                                            # 立即上传到数据库
+                                            try:
+                                                prepared_tweet = prepare_tweet_data(tweet)
+                                                tweet_id = insert_tweet(prepared_tweet)
+                                                if tweet_id:
+                                                    upload_success_count += 1
+                                                    print(f"✅ 上传至数据库完成 (ID: {tweet_id}) - {restaurant_name}")
+                                                else:
+                                                    upload_fail_count += 1
+                                                    print(f"❌ 上传至数据库失败: 返回ID为空 - {restaurant_name}")
+                                            except Exception as e:
+                                                upload_fail_count += 1
+                                                print(f"❌ 上传至数据库失败: {e} - {restaurant_name}")
                                             
                                             processed_count += 1
                                             ai_paraphrased_count += 1
@@ -516,18 +530,10 @@ class IntegratedSpider:
                 except Exception as e:
                     print(f"处理响应时出现错误: {e}")
         
-        print(f"\n总共处理了 {total_notes} 条数据，成功保存 {processed_count} 条")
+        print(f"\n总共处理了 {total_notes} 条笔记，成功保存 {processed_count} 条餐厅数据")
         print(f"保存位置: {base_dir}")
         print(f"AI转述成功: {ai_paraphrased_count} 条")
-        
-        # 自动上传到数据库
-        if tweets_data:
-            print(f"\n开始上传 {len(tweets_data)} 条数据到数据库...")
-            try:
-                result = batch_insert_tweets(tweets_data)
-                print(f"✅ 上传完成: 成功 {result['success']} 条, 失败 {result['failed']} 条")
-            except Exception as e:
-                print(f"❌ 自动上传失败: {e}")
+        print(f"数据库上传: 成功 {upload_success_count} 条, 失败 {upload_fail_count} 条")
         
         return csv_filename
     
