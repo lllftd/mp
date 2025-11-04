@@ -19,8 +19,8 @@ if [ ! -f "venv/.deps_installed" ]; then
     touch venv/.deps_installed
 fi
 
-# 爬虫脚本路径（使用spider文件夹中的爬虫）
-SPIDER_SCRIPT="../spider/xhs3.py"
+# 爬虫脚本路径（使用本地爬虫文件）
+SPIDER_SCRIPT="xhs3.py"
 
 # 如果提供了参数，直接运行爬虫（需要适配新爬虫的参数格式）
 if [ $# -gt 0 ]; then
