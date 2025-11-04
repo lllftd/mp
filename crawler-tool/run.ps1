@@ -1,4 +1,6 @@
 # 集成爬虫脚本 - 一键运行：爬虫 → AI转述 → 水印清洗 → 上传数据库
+# 注意：如果遇到执行策略错误，请使用: powershell -ExecutionPolicy Bypass -File run.ps1 <关键词> <页数>
+# 或者直接使用 run.bat 批处理文件
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
