@@ -78,6 +78,10 @@ crawler-tool/chrome_user_data/
 # Downloads and saved data
 crawler-tool/downloads/
 crawler-tool/saved_data/
+crawler-tool/saved/
+crawler-tool/temp_cleaned_*.jpg
+crawler-tool/temp_cleaned_*.png
+crawler-tool/*.csv
 
 # TypeScript generated
 auto-imports.d.ts

@@ -98,6 +98,8 @@ class WatermarkRemover:
             result_img = Image.fromarray(result_rgb)
             
             if save_path:
+                # 确保目录存在
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 result_img.save(save_path, quality=95)
                 return save_path
             else:
@@ -110,13 +112,34 @@ class WatermarkRemover:
             print(f"水印清洗失败: {e}")
             return image_url
     
-    def process_image(self, image_url: str) -> str:
+    def download_image(self, image_url: str, save_path: str) -> str:
+        """下载图片并保存到指定路径"""
+        try:
+            response = requests.get(image_url, timeout=30)
+            if response.status_code != 200:
+                return ""
+            
+            # 确保目录存在
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            
+            # 保存图片
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+            
+            return save_path
+        except Exception as e:
+            print(f"下载图片失败 {image_url}: {e}")
+            return ""
+    
+    def process_image(self, image_url: str, save_path: str = None) -> str:
         """处理图片，清洗水印"""
         if Config.REMOVE_WATERMARK:
             if IMAGE_PROCESSING_AVAILABLE:
-                return self.remove_watermark_image(image_url)
+                return self.remove_watermark_image(image_url, save_path)
             else:
                 return self.remove_watermark_ai(image_url)
+        elif save_path:
+            return self.download_image(image_url, save_path)
         return image_url
 
 
@@ -321,12 +344,22 @@ class IntegratedSpider:
         
         tweets_data = []
         nowt = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        filename = f"{keyword}_{nowt}.csv"
         
-        # 创建保存目录
-        os.makedirs(Config.DOWNLOAD_DIR, exist_ok=True)
+        # 创建保存目录结构: saved/时间戳/图片、原文、转述
+        base_dir = os.path.join("saved", nowt)
+        images_dir = os.path.join(base_dir, "图片")
+        original_dir = os.path.join(base_dir, "原文")
+        paraphrased_dir = os.path.join(base_dir, "转述")
         
-        with open(filename, 'w', encoding='utf-8-sig', newline='') as file:
+        os.makedirs(images_dir, exist_ok=True)
+        os.makedirs(original_dir, exist_ok=True)
+        os.makedirs(paraphrased_dir, exist_ok=True)
+        
+        print(f"保存目录: {base_dir}")
+        
+        csv_filename = os.path.join(base_dir, f"{keyword}_{nowt}.csv")
+        
+        with open(csv_filename, 'w', encoding='utf-8-sig', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["标题", "描述", "图片链接", "笔记ID", "转述标题", "转述描述", "内容类型", "清洗后图片"])
             
@@ -352,6 +385,7 @@ class IntegratedSpider:
                                     final_desc = desc
                                     content_type = None
                                     cleaned_images = []
+                                    saved_image_paths = []
                                     
                                     # AI转述
                                     print(f"正在AI转述: {title[:30]}...")
@@ -362,17 +396,48 @@ class IntegratedSpider:
                                         ai_paraphrased_count += 1
                                         print(f"✅ 转述完成: {final_title[:30]}...")
                                     
-                                    # 水印清洗
+                                    # 保存原文
+                                    original_filename = os.path.join(original_dir, f"{processed_count:04d}_{note_id}.txt")
+                                    with open(original_filename, 'w', encoding='utf-8') as f:
+                                        f.write(f"标题: {title}\n\n")
+                                        f.write(f"描述: {desc}\n")
+                                    print(f"已保存原文: {original_filename}")
+                                    
+                                    # 保存转述内容
+                                    paraphrased_filename = os.path.join(paraphrased_dir, f"{processed_count:04d}_{note_id}.txt")
+                                    with open(paraphrased_filename, 'w', encoding='utf-8') as f:
+                                        f.write(f"标题: {final_title}\n\n")
+                                        f.write(f"描述: {final_desc}\n")
+                                        if content_type:
+                                            f.write(f"\n内容类型: {content_type}\n")
+                                    print(f"已保存转述: {paraphrased_filename}")
+                                    
+                                    # 下载并清洗图片
                                     if img:
                                         img_list = img.split(',')
-                                        for img_url in img_list:
+                                        for idx, img_url in enumerate(img_list):
                                             if img_url.strip():
-                                                print(f"正在清洗水印: {img_url[:50]}...")
-                                                cleaned_img = self.watermark_remover.process_image(img_url.strip())
-                                                cleaned_images.append(cleaned_img)
-                                                print(f"✅ 水印清洗完成")
+                                                print(f"正在处理图片 {idx+1}/{len(img_list)}: {img_url[:50]}...")
+                                                
+                                                # 生成图片文件名
+                                                img_ext = os.path.splitext(img_url.split('?')[0])[1] or '.jpg'
+                                                img_filename = f"{processed_count:04d}_{note_id}_{idx+1}{img_ext}"
+                                                img_path = os.path.join(images_dir, img_filename)
+                                                
+                                                # 清洗水印并保存
+                                                if Config.REMOVE_WATERMARK and IMAGE_PROCESSING_AVAILABLE:
+                                                    cleaned_img = self.watermark_remover.remove_watermark_image(img_url.strip(), img_path)
+                                                    if cleaned_img and os.path.exists(cleaned_img):
+                                                        saved_image_paths.append(cleaned_img)
+                                                        print(f"✅ 水印清洗完成: {img_filename}")
+                                                else:
+                                                    # 直接下载原图
+                                                    saved_path = self.watermark_remover.download_image(img_url.strip(), img_path)
+                                                    if saved_path:
+                                                        saved_image_paths.append(saved_path)
+                                                        print(f"✅ 图片下载完成: {img_filename}")
                                     
-                                    cleaned_img_str = ",".join(cleaned_images) if cleaned_images else img
+                                    cleaned_img_str = ",".join(saved_image_paths) if saved_image_paths else img
                                     
                                     # 写入CSV
                                     writer.writerow([title, desc, img, note_id, final_title, final_desc, content_type or "", cleaned_img_str])
@@ -382,7 +447,7 @@ class IntegratedSpider:
                                         'tweets_title': final_title,
                                         'tweets_content': final_desc,
                                         'tweets_describe': final_desc[:200] if len(final_desc) > 200 else final_desc,
-                                        'tweets_img': json.dumps(cleaned_images) if cleaned_images else json.dumps(img.split(',') if img else []),
+                                        'tweets_img': json.dumps(saved_image_paths) if saved_image_paths else json.dumps(img.split(',') if img else []),
                                         'tweets_type_pid': Config.DEFAULT_TYPE_PID,
                                         'tweets_type_cid': Config.DEFAULT_TYPE_CID,
                                         'tweets_user': '爬虫',
@@ -398,7 +463,8 @@ class IntegratedSpider:
                 except Exception as e:
                     print(f"处理响应时出现错误: {e}")
         
-        print(f"\n总共处理了 {total_notes} 条数据，成功保存 {processed_count} 条到 {filename}")
+        print(f"\n总共处理了 {total_notes} 条数据，成功保存 {processed_count} 条")
+        print(f"保存位置: {base_dir}")
         print(f"AI转述成功: {ai_paraphrased_count} 条")
         
         # 自动上传到数据库
@@ -410,7 +476,7 @@ class IntegratedSpider:
             except Exception as e:
                 print(f"❌ 自动上传失败: {e}")
         
-        return filename
+        return csv_filename
     
     def login(self):
         """手动登录小红书"""
