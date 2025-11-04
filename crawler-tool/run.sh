@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 激活虚拟环境并运行小红书爬虫（交互式输入参数）
+# 集成爬虫脚本 - 一键运行：爬虫 → AI转述 → 水印清洗 → 上传数据库
 
 cd "$(dirname "$0")"
 
@@ -19,23 +19,13 @@ if [ ! -f "venv/.deps_installed" ]; then
     touch venv/.deps_installed
 fi
 
-# 爬虫脚本路径（使用本地爬虫文件）
-SPIDER_SCRIPT="xhs3.py"
-
-# 如果提供了参数，直接运行爬虫（需要适配新爬虫的参数格式）
-if [ $# -gt 0 ]; then
-    echo "注意：新爬虫使用交互式输入，命令行参数将被忽略"
-    echo "运行爬虫脚本..."
-    python3 "$SPIDER_SCRIPT"
-    exit 0
+# 检查参数
+if [ $# -lt 2 ]; then
+    echo "用法: ./run.sh <关键词> <页数>"
+    echo "示例: ./run.sh 深圳美食 5"
+    exit 1
 fi
 
-# 交互式输入参数
-echo "============================================================"
-echo "小红书餐厅爬虫"
-echo "============================================================"
-echo ""
-
-# 运行爬虫（新爬虫内置交互式输入）
-python3 "$SPIDER_SCRIPT"
+# 运行集成爬虫脚本
+python3 crawler.py "$@"
 
