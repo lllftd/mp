@@ -1,0 +1,53 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+env/
+venv/
+.venv/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+
+downloads/
+
+# Unit test / coverage reports
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+
+# Logs
+*.log
+
+# IDEs and editors
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+
+# Others
+pip-wheel-metadata/
+
+
