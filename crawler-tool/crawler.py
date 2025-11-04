@@ -450,7 +450,7 @@ class IntegratedSpider:
                                         'tweets_img': json.dumps(saved_image_paths) if saved_image_paths else json.dumps(img.split(',') if img else []),
                                         'tweets_type_pid': Config.DEFAULT_TYPE_PID,
                                         'tweets_type_cid': Config.DEFAULT_TYPE_CID,
-                                        'tweets_user': '爬虫',
+                                        'tweets_user': Config.DEFAULT_USER,
                                     }
                                     tweets_data.append(tweet)
                                     
