@@ -95,42 +95,6 @@ def load_excel(file_path: str) -> List[Dict]:
     return df.to_dict('records')
 
 
-def normalize_field_name(field: str) -> str:
-    """规范化字段名（支持多种命名格式）"""
-    mapping = {
-        'title': 'tweets_title',
-        'tweets_title': 'tweets_title',
-        'content': 'tweets_content',
-        'tweets_content': 'tweets_content',
-        'describe': 'tweets_describe',
-        'tweets_describe': 'tweets_describe',
-        'description': 'tweets_describe',
-        'image': 'tweets_img',
-        'images': 'tweets_img',
-        'tweets_img': 'tweets_img',
-        'img': 'tweets_img',
-        'user': 'tweets_user',
-        'author': 'tweets_user',
-        'tweets_user': 'tweets_user',
-        'type_pid': 'tweets_type_pid',
-        'tweets_type_pid': 'tweets_type_pid',
-        'type_cid': 'tweets_type_cid',
-        'tweets_type_cid': 'tweets_type_cid',
-        'like_num': 'like_num',
-        'likes': 'like_num',
-        'collect_num': 'collect_num',
-        'collects': 'collect_num',
-        'browse_num': 'browse_num',
-        'browses': 'browse_num',
-        'views': 'browse_num',
-        'create_user': 'create_user',
-        'creator': 'create_user',
-        'client_create_user': 'client_create_user',
-        'client_creator': 'client_create_user',
-    }
-    return mapping.get(field.lower(), field)
-
-
 def prepare_tweet_data(row: Dict) -> Dict:
     """准备插入数据库的数据"""
     tweet = {}
