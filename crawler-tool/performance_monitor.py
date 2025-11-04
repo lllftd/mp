@@ -1,8 +1,17 @@
 """
 爬虫性能监控模块
-记录爬虫的执行时间、资源使用等性能指标，并提供实时显示功能
+记录爬虫的执行时间、资源使用等性能指标
+
+可以作为命令行工具使用:
+    python performance_monitor.py [operation] [--export filepath] [--clear]
+    
+示例:
+    python performance_monitor.py
+    python performance_monitor.py crawl.深圳美食
+    python performance_monitor.py --export performance.json
+    python performance_monitor.py ai.paraphrase_and_classify --export ai_perf.json
+    python performance_monitor.py --clear
 """
-import time
 import logging
 import psutil
 import os
