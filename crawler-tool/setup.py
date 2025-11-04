@@ -68,7 +68,7 @@ def install_ollama():
             print("[OK] Ollama安装完成")
             return True
         except Exception as e:
-            print(f"❌ 安装失败: {e}")
+            print(f"[ERROR] 安装失败: {e}")
             print("请手动运行: curl -fsSL https://ollama.com/install.sh | sh")
             return False
     elif system == "Darwin":
