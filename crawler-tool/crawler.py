@@ -309,27 +309,33 @@ class IntegratedSpider:
             responses = []
             
             for page_num in range(pages):
-                print(f"正在爬取第 {page_num + 1} 页")
-                
-                if self.check_for_blocking():
-                    self.handle_blocking()
-                    continue
-                
-                self.human_like_scroll()
-                
                 try:
-                    packet = self.page.listen.wait(timeout=REQUEST_TIMEOUT)
-                    if packet and packet.response:
-                        response_body = packet.response.body
-                        if response_body:
-                            responses.append(response_body)
-                            print(f"成功捕获第 {page_num + 1} 页数据")
-                except Exception as e:
-                    print(f"第 {page_num + 1} 页捕获失败: {e}")
-                
-                if page_num < pages - 1:
-                    page_delay = random.uniform(PAGE_DELAY_MIN, PAGE_DELAY_MAX)
-                    time.sleep(page_delay)
+                    print(f"正在爬取第 {page_num + 1} 页")
+                    
+                    if self.check_for_blocking():
+                        self.handle_blocking()
+                        continue
+                    
+                    self.human_like_scroll()
+                    
+                    try:
+                        packet = self.page.listen.wait(timeout=REQUEST_TIMEOUT)
+                        if packet and packet.response:
+                            response_body = packet.response.body
+                            if response_body:
+                                responses.append(response_body)
+                                print(f"成功捕获第 {page_num + 1} 页数据")
+                    except Exception as e:
+                        print(f"第 {page_num + 1} 页捕获失败: {e}")
+                    
+                    if page_num < pages - 1:
+                        page_delay = random.uniform(PAGE_DELAY_MIN, PAGE_DELAY_MAX)
+                        time.sleep(page_delay)
+                        
+                except KeyboardInterrupt:
+                    print(f"\n⚠️  在第 {page_num + 1} 页爬取时被中断")
+                    print(f"已获取 {len(responses)} 页数据")
+                    raise
             
             return responses
             
@@ -362,7 +368,7 @@ class IntegratedSpider:
         
         with open(csv_filename, 'w', encoding='utf-8-sig', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(["标题", "描述", "图片链接", "笔记ID", "转述标题", "转述描述", "内容类型", "清洗后图片"])
+            writer.writerow(["餐厅名称", "原始描述", "图片链接", "笔记ID", "转述标题", "转述描述", "地址", "清洗后图片"])
             
             for response in responses:
                 try:
@@ -376,98 +382,137 @@ class IntegratedSpider:
                         total_notes += len(notes)
                         
                         for note in notes:
-                            note_id = note.get("id")
-                            xsec_token = note.get("xsec_token")
-                            
-                            if note_id and xsec_token:
-                                title, desc, img = self.get_note_detail(note_id, xsec_token)
-                                if title:
-                                    final_title = title
-                                    final_desc = desc
-                                    content_type = None
-                                    cleaned_images = []
-                                    saved_image_paths = []
-                                    
-                                    # AI转述
-                                    print(f"正在AI转述: {title[:30]}...")
-                                    paraphrased_title, paraphrased_desc, content_type, type_cid = self.ai_paraphraser.paraphrase_and_classify(title, desc)
-                                    if paraphrased_title:
-                                        final_title = paraphrased_title
-                                        final_desc = paraphrased_desc
-                                        ai_paraphrased_count += 1
-                                        print(f"✅ 转述完成: {final_title[:30]}...")
-                                    
-                                    # 如果没有获取到type_cid，使用默认值
-                                    if not type_cid:
-                                        type_cid = Config.DEFAULT_TYPE_CID if Config.DEFAULT_TYPE_CID else "10"
-                                        print(f"⚠️  使用默认子类型ID: {type_cid}")
-                                    else:
-                                        print(f"✅ AI分类完成: 子类型ID={type_cid}")
-                                    
-                                    # 保存原文
-                                    original_filename = os.path.join(original_dir, f"{processed_count:04d}_{note_id}.txt")
-                                    with open(original_filename, 'w', encoding='utf-8') as f:
-                                        f.write(f"标题: {title}\n\n")
-                                        f.write(f"描述: {desc}\n")
-                                    print(f"已保存原文: {original_filename}")
-                                    
-                                    # 保存转述内容
-                                    paraphrased_filename = os.path.join(paraphrased_dir, f"{processed_count:04d}_{note_id}.txt")
-                                    with open(paraphrased_filename, 'w', encoding='utf-8') as f:
-                                        f.write(f"标题: {final_title}\n\n")
-                                        f.write(f"描述: {final_desc}\n")
-                                        if content_type:
-                                            f.write(f"\n内容类型: {content_type}\n")
-                                    print(f"已保存转述: {paraphrased_filename}")
-                                    
-                                    # 下载并清洗图片
-                                    if img:
-                                        img_list = img.split(',')
-                                        for idx, img_url in enumerate(img_list):
-                                            if img_url.strip():
-                                                print(f"正在处理图片 {idx+1}/{len(img_list)}: {img_url[:50]}...")
-                                                
-                                                # 生成图片文件名
-                                                img_ext = os.path.splitext(img_url.split('?')[0])[1] or '.jpg'
-                                                img_filename = f"{processed_count:04d}_{note_id}_{idx+1}{img_ext}"
-                                                img_path = os.path.join(images_dir, img_filename)
-                                                
-                                                # 清洗水印并保存
-                                                if Config.REMOVE_WATERMARK and IMAGE_PROCESSING_AVAILABLE:
-                                                    cleaned_img = self.watermark_remover.remove_watermark_image(img_url.strip(), img_path)
-                                                    if cleaned_img and os.path.exists(cleaned_img):
-                                                        saved_image_paths.append(cleaned_img)
-                                                        print(f"✅ 水印清洗完成: {img_filename}")
-                                                else:
-                                                    # 直接下载原图
-                                                    saved_path = self.watermark_remover.download_image(img_url.strip(), img_path)
-                                                    if saved_path:
-                                                        saved_image_paths.append(saved_path)
-                                                        print(f"✅ 图片下载完成: {img_filename}")
-                                    
-                                    cleaned_img_str = ",".join(saved_image_paths) if saved_image_paths else img
-                                    
-                                    # 写入CSV
-                                    writer.writerow([title, desc, img, note_id, final_title, final_desc, content_type or "", cleaned_img_str])
-                                    
-                                    # 准备数据库数据
-                                    tweet = {
-                                        'tweets_title': final_title,
-                                        'tweets_content': final_desc,
-                                        'tweets_describe': final_desc[:200] if len(final_desc) > 200 else final_desc,
-                                        'tweets_img': json.dumps(saved_image_paths) if saved_image_paths else json.dumps(img.split(',') if img else []),
-                                        'tweets_type_pid': Config.DEFAULT_TYPE_PID,
-                                        'tweets_type_cid': type_cid,  # 使用AI返回的子类型ID
-                                        'tweets_user': get_random_username(),  # 随机生成用户名
-                                    }
-                                    tweets_data.append(tweet)
-                                    
-                                    processed_count += 1
-                                    
-                                    if processed_count % BATCH_SIZE == 0:
-                                        file.flush()
-                                        print(f"已处理 {processed_count} 条数据")
-                                        self.random_delay(3, 6)
+                            try:
+                                note_id = note.get("id")
+                                xsec_token = note.get("xsec_token")
+                                
+                                if note_id and xsec_token:
+                                    title, desc, img = self.get_note_detail(note_id, xsec_token)
+                                    if title:
+                                        # 保存原文
+                                        original_filename = os.path.join(original_dir, f"{processed_count:04d}_{note_id}.txt")
+                                        with open(original_filename, 'w', encoding='utf-8') as f:
+                                            f.write(f"标题: {title}\n\n")
+                                            f.write(f"描述: {desc}\n")
+                                        print(f"\n📝 正在处理笔记: {title[:50]}...")
+                                        
+                                        # 提取餐厅信息
+                                        print(f"🔍 正在提取餐厅信息...")
+                                        restaurants = self.ai_paraphraser.extract_restaurants(title, desc)
+                                        
+                                        if not restaurants:
+                                            # 如果没有提取到餐厅，使用原来的方式处理（作为单个条目）
+                                            print(f"⚠️  未提取到餐厅信息，按原笔记处理")
+                                            restaurants = [{
+                                                'name': title,
+                                                'address': '',
+                                                'price_range': '',
+                                                'description': desc
+                                            }]
+                                        
+                                        print(f"✅ 提取到 {len(restaurants)} 个餐厅")
+                                        
+                                        # 下载并清洗图片（所有餐厅共享）
+                                        saved_image_paths = []
+                                        if img:
+                                            img_list = img.split(',')
+                                            for idx, img_url in enumerate(img_list):
+                                                if img_url.strip():
+                                                    print(f"正在处理图片 {idx+1}/{len(img_list)}: {img_url[:50]}...")
+                                                    
+                                                    # 生成图片文件名
+                                                    img_ext = os.path.splitext(img_url.split('?')[0])[1] or '.jpg'
+                                                    img_filename = f"{processed_count:04d}_{note_id}_{idx+1}{img_ext}"
+                                                    img_path = os.path.join(images_dir, img_filename)
+                                                    
+                                                    # 清洗水印并保存
+                                                    if Config.REMOVE_WATERMARK and IMAGE_PROCESSING_AVAILABLE:
+                                                        cleaned_img = self.watermark_remover.remove_watermark_image(img_url.strip(), img_path)
+                                                        if cleaned_img and os.path.exists(cleaned_img):
+                                                            saved_image_paths.append(cleaned_img)
+                                                            print(f"✅ 水印清洗完成: {img_filename}")
+                                                    else:
+                                                        # 直接下载原图
+                                                        saved_path = self.watermark_remover.download_image(img_url.strip(), img_path)
+                                                        if saved_path:
+                                                            saved_image_paths.append(saved_path)
+                                                            print(f"✅ 图片下载完成: {img_filename}")
+                                        
+                                        cleaned_img_str = ",".join(saved_image_paths) if saved_image_paths else img
+                                        
+                                        # 为每个餐厅分别转述和上传
+                                        for restaurant_idx, restaurant in enumerate(restaurants):
+                                            restaurant_name = restaurant.get('name', '未知餐厅')
+                                            print(f"\n🍴 正在处理餐厅 {restaurant_idx + 1}/{len(restaurants)}: {restaurant_name}")
+                                            
+                                            # 对餐厅进行转述
+                                            paraphrased_title, paraphrased_desc, type_cid = self.ai_paraphraser.paraphrase_restaurant(restaurant, title)
+                                            
+                                            if not paraphrased_title:
+                                                print(f"⚠️  餐厅转述失败，跳过")
+                                                continue
+                                            
+                                            if not type_cid:
+                                                type_cid = Config.DEFAULT_TYPE_CID if Config.DEFAULT_TYPE_CID else "10"
+                                                print(f"⚠️  使用默认子类型ID: {type_cid}")
+                                            else:
+                                                print(f"✅ AI分类完成: 子类型ID={type_cid}")
+                                            
+                                            # 保存转述内容（每个餐厅单独保存）
+                                            restaurant_safe_name = restaurant_name.replace('/', '_').replace('\\', '_')[:50]
+                                            paraphrased_filename = os.path.join(paraphrased_dir, f"{processed_count:04d}_{note_id}_{restaurant_idx}_{restaurant_safe_name}.txt")
+                                            with open(paraphrased_filename, 'w', encoding='utf-8') as f:
+                                                f.write(f"餐厅名称: {restaurant_name}\n\n")
+                                                f.write(f"标题: {paraphrased_title}\n\n")
+                                                f.write(f"描述: {paraphrased_desc}\n")
+                                                if restaurant.get('address'):
+                                                    f.write(f"\n地址: {restaurant.get('address')}\n")
+                                                if restaurant.get('price_range'):
+                                                    f.write(f"\n人均: {restaurant.get('price_range')}\n")
+                                            print(f"✅ 已保存转述: {paraphrased_filename}")
+                                            
+                                            # 写入CSV（每个餐厅一行）
+                                            writer.writerow([
+                                                restaurant_name,  # 原始标题（餐厅名）
+                                                restaurant.get('description', desc),  # 原始描述
+                                                img,  # 原始图片链接
+                                                f"{note_id}_{restaurant_idx}",  # 笔记ID_餐厅索引
+                                                paraphrased_title,  # 转述标题
+                                                paraphrased_desc,  # 转述描述
+                                                restaurant.get('address', ''),  # 地址（作为内容类型字段）
+                                                cleaned_img_str  # 清洗后图片
+                                            ])
+                                            
+                                            # 准备数据库数据（每个餐厅一条记录）
+                                            tweet = {
+                                                'tweets_title': paraphrased_title,
+                                                'tweets_content': paraphrased_desc,
+                                                'tweets_describe': paraphrased_desc[:200] if len(paraphrased_desc) > 200 else paraphrased_desc,
+                                                'tweets_img': json.dumps(saved_image_paths) if saved_image_paths else json.dumps(img.split(',') if img else []),
+                                                'tweets_type_pid': Config.DEFAULT_TYPE_PID,
+                                                'tweets_type_cid': type_cid,  # 使用AI返回的子类型ID
+                                                'tweets_user': get_random_username(),  # 随机生成用户名
+                                            }
+                                            tweets_data.append(tweet)
+                                            
+                                            processed_count += 1
+                                            ai_paraphrased_count += 1
+                                            
+                                            if processed_count % BATCH_SIZE == 0:
+                                                file.flush()
+                                                print(f"已处理 {processed_count} 条数据")
+                                                self.random_delay(3, 6)
+                            except KeyboardInterrupt:
+                                print(f"\n⚠️  在处理第 {processed_count + 1} 条数据时被中断")
+                                print(f"已处理 {processed_count} 条数据")
+                                raise
+                            except Exception as e:
+                                print(f"处理单条数据时出错: {e}")
+                                continue  # 继续处理下一条
+                except KeyboardInterrupt:
+                    print(f"\n⚠️  在处理响应时被中断")
+                    print(f"已处理 {processed_count} 条数据")
+                    raise
                 except Exception as e:
                     print(f"处理响应时出现错误: {e}")
         
@@ -502,6 +547,7 @@ class IntegratedSpider:
             print(f"\n开始抓取关键词：{keyword}")
             print(f"预计抓取 {pages} 页数据")
             print("=" * 60)
+            print("提示: 按 Ctrl+C 可以随时终止程序")
             
             responses = self.search_notes(keyword, pages)
             if responses:
@@ -511,12 +557,16 @@ class IntegratedSpider:
                 print("未获取到任何数据")
                 
         except KeyboardInterrupt:
-            print("\n用户中断程序")
+            print("\n\n⚠️  检测到 Ctrl+C，正在安全退出...")
+            print("正在保存已处理的数据...")
+            print("正在关闭浏览器...")
+            raise  # 重新抛出，让外层也能捕获
         except Exception as e:
             print(f"程序执行出错: {e}")
         finally:
             try:
                 self.page.close()
+                print("✅ 浏览器已关闭")
             except:
                 pass
 
@@ -542,8 +592,28 @@ def main():
     print("=" * 60)
     print()
     
-    spider = IntegratedSpider()
-    spider.run(keyword, pages)
+    spider = None
+    try:
+        spider = IntegratedSpider()
+        spider.run(keyword, pages)
+    except KeyboardInterrupt:
+        print("\n\n⚠️  程序被用户中断 (Ctrl+C)")
+        print("正在清理资源...")
+        if spider:
+            try:
+                spider.page.close()
+            except:
+                pass
+        print("✅ 程序已安全退出")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n❌ 程序执行出错: {e}")
+        if spider:
+            try:
+                spider.page.close()
+            except:
+                pass
+        sys.exit(1)
 
 
 if __name__ == '__main__':
