@@ -25,9 +25,9 @@ class Config:
     CRAWLER_TIMEOUT = int(os.getenv('CRAWLER_TIMEOUT', 30))  # 请求超时（秒）
     DOWNLOAD_DIR = os.getenv('DOWNLOAD_DIR', './downloads')  # 图片下载目录
     SAVE_DIR = os.getenv('SAVE_DIR', './saved_data')  # 数据保存目录（文本和JSON）
-    DEFAULT_TYPE_PID = int(os.getenv('DEFAULT_TYPE_PID', 5))  # 默认父类型ID
-    DEFAULT_TYPE_CID = os.getenv('DEFAULT_TYPE_CID', '10,42')  # 默认子类型ID
-    DEFAULT_USER = os.getenv('DEFAULT_USER', '爬虫')  # 默认用户名
+    DEFAULT_TYPE_PID = int(os.getenv('DEFAULT_TYPE_PID')) if os.getenv('DEFAULT_TYPE_PID') else None  # 默认父类型ID（必须配置）
+    DEFAULT_TYPE_CID = os.getenv('DEFAULT_TYPE_CID')  # 默认子类型ID（必须配置）
+    DEFAULT_USER = os.getenv('DEFAULT_USER')  # 默认用户名（可选，实际使用随机生成）
 
     # AI转述配置（使用Ollama）
     LLM_API_BASE = os.getenv('LLM_API_BASE', 'http://localhost:11434/v1')
