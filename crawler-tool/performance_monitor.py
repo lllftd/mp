@@ -1,13 +1,25 @@
 """
 爬虫性能监控模块
 记录爬虫的执行时间、资源使用等性能指标，并提供实时显示功能
+
+可以作为命令行工具使用:
+    python performance_monitor.py [operation] [--export filepath] [--clear]
+    
+示例:
+    python performance_monitor.py
+    python performance_monitor.py crawl.深圳美食
+    python performance_monitor.py --export performance.json
+    python performance_monitor.py ai.paraphrase_and_classify --export ai_perf.json
+    python performance_monitor.py --clear
 """
 import time
 import logging
 import psutil
 import os
+import sys
 import threading
 import json
+import argparse
 from typing import Dict, Optional, List
 from collections import defaultdict
 from datetime import datetime
@@ -439,3 +451,107 @@ def get_real_time_display(update_interval: float = 2.0) -> RealTimePerformanceDi
     if _real_time_display is None:
         _real_time_display = RealTimePerformanceDisplay(update_interval)
     return _real_time_display
+
+
+# ==================== 命令行工具功能 ====================
+
+def format_duration_cli(seconds: float) -> str:
+    """格式化时长（命令行工具用）"""
+    if seconds < 0.001:
+        return f"{seconds * 1000000:.2f}us"
+    elif seconds < 1:
+        return f"{seconds * 1000:.2f}ms"
+    else:
+        return f"{seconds:.3f}s"
+
+
+def format_size_cli(mb: float) -> str:
+    """格式化大小（命令行工具用）"""
+    if mb < 1:
+        return f"{mb * 1024:.2f}KB"
+    else:
+        return f"{mb:.2f}MB"
+
+
+def print_statistics(stats: dict, operation: str = None):
+    """打印统计信息"""
+    if not stats:
+        print(f"[WARN] 操作 '{operation}' 暂无性能数据")
+        return
+    
+    print(f"\n{'='*60}")
+    print(f"性能统计: {operation or '所有操作'}")
+    print(f"{'='*60}\n")
+    
+    if operation:
+        # 单个操作的详细统计
+        print(f"执行次数: {stats.get('count', 0)}")
+        print(f"平均耗时: {format_duration_cli(stats.get('avg_duration', 0))}")
+        print(f"最小耗时: {format_duration_cli(stats.get('min_duration', 0))}")
+        print(f"最大耗时: {format_duration_cli(stats.get('max_duration', 0))}")
+        print(f"总耗时: {format_duration_cli(stats.get('total_duration', 0))}")
+        print(f"最后一次耗时: {format_duration_cli(stats.get('last_duration', 0))}")
+        print(f"当前内存使用: {format_size_cli(stats.get('last_memory_mb', 0))}")
+        print(f"当前CPU使用率: {stats.get('last_cpu_percent', 0):.2f}%")
+        if stats.get('last_network_sent_mb', 0) > 0:
+            print(f"网络发送量: {format_size_cli(stats.get('last_network_sent_mb', 0))}")
+        if stats.get('last_network_recv_mb', 0) > 0:
+            print(f"网络接收量: {format_size_cli(stats.get('last_network_recv_mb', 0))}")
+    else:
+        # 所有操作的概览
+        print(f"{'操作':<40} {'次数':<8} {'平均耗时':<15} {'总耗时':<15} {'内存(MB)':<12}")
+        print("-" * 95)
+        
+        for op_name, op_stats in sorted(stats.items()):
+            count = op_stats.get('count', 0)
+            avg = op_stats.get('avg_duration', 0)
+            total = op_stats.get('total_duration', 0)
+            memory = op_stats.get('last_memory_mb', 0)
+            print(f"{op_name:<40} {count:<8} {format_duration_cli(avg):<15} {format_duration_cli(total):<15} {memory:<12.2f}")
+        
+        # 总体统计
+        summary = get_crawler_performance_monitor().get_summary()
+        print("\n" + "-" * 95)
+        print(f"总操作数: {summary.get('total_operations', 0)}")
+        print(f"总耗时: {format_duration_cli(summary.get('total_time', 0))}")
+        print(f"平均每次操作耗时: {format_duration_cli(summary.get('avg_time_per_operation', 0))}")
+        print(f"当前内存使用: {format_size_cli(summary.get('current_memory_mb', 0))}")
+        print(f"当前CPU使用率: {summary.get('current_cpu_percent', 0):.2f}%")
+        if summary.get('total_network_sent_mb', 0) > 0:
+            print(f"总网络发送量: {format_size_cli(summary.get('total_network_sent_mb', 0))}")
+        if summary.get('total_network_recv_mb', 0) > 0:
+            print(f"总网络接收量: {format_size_cli(summary.get('total_network_recv_mb', 0))}")
+
+
+def main():
+    """命令行入口"""
+    parser = argparse.ArgumentParser(description='查看爬虫工具性能指标')
+    parser.add_argument('operation', nargs='?', help='操作名称（可选）')
+    parser.add_argument('--export', help='导出性能数据到JSON文件')
+    parser.add_argument('--clear', action='store_true', help='清空性能数据')
+    
+    args = parser.parse_args()
+    
+    monitor = get_crawler_performance_monitor()
+    
+    if args.clear:
+        monitor.clear_metrics()
+        print("[OK] 性能数据已清空")
+        return
+    
+    if args.operation:
+        # 显示指定操作的统计
+        stats = monitor.get_statistics(args.operation)
+        print_statistics(stats, args.operation)
+    else:
+        # 显示所有操作的统计
+        all_stats = monitor.get_all_statistics()
+        print_statistics(all_stats)
+    
+    if args.export:
+        monitor.export_to_json(args.export)
+        print(f"\n[OK] 性能数据已导出到: {args.export}")
+
+
+if __name__ == "__main__":
+    main()
