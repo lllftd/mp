@@ -153,26 +153,67 @@ def main():
     models = list_models()
     if models:
         for model in models:
-            print(f"  - {model}")
+            marker = " ⭐ 当前配置" if model == Config.LLM_MODEL else ""
+            print(f"  - {model}{marker}")
     else:
         print("  （无）")
     
     print()
     
-    # 检查目标模型是否已安装
+    # 显示当前配置的模型
     target_model = Config.LLM_MODEL
+    print(f"当前配置的模型: {target_model}")
+    print()
+    
+    # 询问是否切换模型
     if target_model in models:
-        print(f"✅ 目标模型 {target_model} 已安装")
+        print(f"✅ 模型 {target_model} 已安装")
         print()
-        choice = input("是否重新下载？(y/n): ").strip().lower()
+        choice = input("是否下载其他模型？(y/n，默认n): ").strip().lower()
         if choice != 'y':
-            print("退出")
-            return
+            choice2 = input("是否重新下载当前模型？(y/n): ").strip().lower()
+            if choice2 != 'y':
+                print("退出")
+                return
+    else:
+        print(f"⚠️  模型 {target_model} 未安装")
+    
+    # 如果用户想选择其他模型
+    if target_model in models:
+        print("\n推荐的高级模型：")
+        print("  1. deepseek-r1:32b (最高质量，需要32GB+内存)")
+        print("  2. qwen2.5:32b (最高质量中文优化，需要32GB+内存)")
+        print("  3. deepseek-r1:14b (高质量，需要16GB+内存)")
+        print("  4. qwen2.5:14b (高质量中文优化，需要16GB+内存)")
+        print("  5. 使用当前配置的模型")
+        print()
+        model_choice = input("选择模型 (1-5，默认5): ").strip()
+        
+        model_map = {
+            '1': 'deepseek-r1:32b',
+            '2': 'qwen2.5:32b',
+            '3': 'deepseek-r1:14b',
+            '4': 'qwen2.5:14b',
+            '5': target_model
+        }
+        
+        if model_choice in model_map:
+            target_model = model_map[model_choice]
+            print(f"\n已选择: {target_model}")
+            print(f"\n⚠️  注意：切换模型后需要更新配置！")
+            print(f"   方法1: 在 .env 文件中设置 LLM_MODEL={target_model}")
+            print(f"   方法2: 修改 config.py 中的 LLM_MODEL 值")
+        else:
+            custom_model = input("输入自定义模型名称（直接回车使用当前配置）: ").strip()
+            if custom_model:
+                target_model = custom_model
+                print(f"已选择: {target_model}")
     
     # 下载模型
     print()
-    print(f"开始下载模型: {target_model}")
+    print(f"准备下载模型: {target_model}")
     print("注意：模型文件较大，下载可能需要较长时间")
+    print("请确保有足够的磁盘空间和稳定的网络连接")
     print()
     
     choice = input("确认下载？(y/n): ").strip().lower()
@@ -191,6 +232,15 @@ def main():
         print("现在可以使用AI转述功能了")
         print(f"模型: {target_model}")
         print(f"API地址: {Config.LLM_API_BASE}")
+        if target_model != Config.LLM_MODEL:
+            print()
+            print("⚠️  重要：请更新配置以使用新模型")
+            print(f"   当前配置: {Config.LLM_MODEL}")
+            print(f"   下载的模型: {target_model}")
+            print()
+            print("更新方法：")
+            print("   1. 创建 .env 文件，添加: LLM_MODEL=" + target_model)
+            print("   2. 或修改 config.py 中的 LLM_MODEL 值")
     else:
         print()
         print("=" * 60)
@@ -201,6 +251,7 @@ def main():
         print("1. 网络连接是否正常")
         print("2. Ollama服务是否运行")
         print("3. 模型名称是否正确")
+        print("4. 系统内存是否足够")
 
 
 if __name__ == '__main__':

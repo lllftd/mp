@@ -97,7 +97,7 @@ class AIParaphraser:
                     }
                 ],
                 "max_tokens": self.max_tokens,
-                "temperature": 0.7,
+                "temperature": getattr(Config, 'LLM_TEMPERATURE', 0.7),  # 使用配置的温度参数
                 "stream": False
             }
             
@@ -181,7 +181,7 @@ class AIParaphraser:
                     }
                 ],
                 "max_tokens": self.max_tokens,
-                "temperature": 0.7
+                "temperature": getattr(Config, 'LLM_TEMPERATURE', 0.7)
             }
             
             response = requests.post(url, json=payload, timeout=60)

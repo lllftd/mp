@@ -30,8 +30,15 @@ class Config:
 
     # AI转述配置（使用Ollama）
     LLM_API_BASE = os.getenv('LLM_API_BASE', 'http://localhost:11434/v1')
-    LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek-r1:14b')  # DeepSeek-R1高性能模型（约8GB）
+    # 默认模型选择（可根据硬件配置选择）：
+    # - deepseek-r1:32b (最高质量，需要32GB+ RAM，约18GB)
+    # - qwen2.5:32b (中文优化，高质量，需要32GB+ RAM，约20GB)
+    # - deepseek-r1:14b (平衡选择，需要16GB+ RAM，约8GB) - 当前默认
+    # - qwen2.5:14b (中文优化，平衡选择，需要16GB+ RAM，约9GB)
+    # - llama3.1:70b (最强大，需要64GB+ RAM，约40GB)
+    LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek-r1:14b')  # 默认模型，可通过环境变量覆盖
     LLM_MAX_TOKENS = int(os.getenv('LLM_MAX_TOKENS', 500))
+    LLM_TEMPERATURE = float(os.getenv('LLM_TEMPERATURE', 0.7))  # 创造性参数（0-1）
     
     # 图片处理配置
     REMOVE_WATERMARK = os.getenv('REMOVE_WATERMARK', 'true').lower() == 'true'  # 是否去除水印

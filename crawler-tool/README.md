@@ -180,17 +180,71 @@ LLM_MODEL=deepseek-r1:14b  # 可以改为其他模型，如 qwen2.5:7b
 LLM_MAX_TOKENS=500
 ```
 
-### 推荐模型
+### 推荐模型（按性能排序）
 
-- **deepseek-r1:14b** (默认) - 高质量，约8GB
-- **qwen2.5:7b** - 较小，约4.5GB，速度快
-- **llama3.1:8b** - 平衡选择，约4.7GB
+**顶级模型（需要32GB+内存）：**
+- **deepseek-r1:32b** - 最高质量，约18GB ⭐⭐⭐⭐⭐
+- **qwen2.5:32b** - 最高质量（中文优化），约20GB ⭐⭐⭐⭐⭐
+- **llama3.1:70b** - 最强大，约40GB，需要64GB+内存 ⭐⭐⭐⭐⭐
 
-更换模型：
+**高质量模型（需要16GB+内存）：**
+- **deepseek-r1:14b** (默认) - 高质量，约8GB ⭐⭐⭐⭐
+- **qwen2.5:14b** - 高质量（中文优化），约9GB ⭐⭐⭐⭐
+
+**轻量级模型（需要8GB+内存）：**
+- **qwen2.5:7b** - 良好质量，速度快，约4.5GB ⭐⭐⭐
+
+### 查看模型指南
+
+运行以下命令查看详细的模型信息和系统推荐：
+
 ```bash
-# 1. 修改config.py中的LLM_MODEL
-# 2. 运行setup_ollama.py下载新模型
+python model_guide.py
+```
+
+这会显示：
+- 所有可用模型列表
+- 每个模型的详细规格
+- 根据您的系统配置推荐适合的模型
+- 如何切换模型
+
+### 切换模型
+
+**方法1: 使用 .env 文件（推荐）**
+
+创建或编辑 `.env` 文件：
+```env
+LLM_MODEL=qwen2.5:32b  # 使用更高级的模型
+```
+
+**方法2: 修改 config.py**
+
+直接修改 `config.py` 中的 `LLM_MODEL` 值：
+```python
+LLM_MODEL = os.getenv('LLM_MODEL', 'qwen2.5:32b')  # 更改默认模型
+```
+
+**方法3: 环境变量**
+
+Windows:
+```powershell
+$env:LLM_MODEL="qwen2.5:32b"
+python xhs3.py
+```
+
+Linux/Mac:
+```bash
+export LLM_MODEL=qwen2.5:32b
+python xhs3.py
+```
+
+**切换后步骤：**
+```bash
+# 1. 下载新模型
 python setup_ollama.py
+
+# 2. 启动爬虫
+python xhs3.py
 ```
 
 ## 📤 上传数据到数据库
