@@ -990,10 +990,13 @@ class IntegratedSpider:
                                                         saved_image_path = './' + saved_image_path
                                                     img_paths_for_db.append(saved_image_path)
                                             
+                                            # 标题使用餐厅名，描述使用餐厅地址
+                                            restaurant_address = restaurant.get('address', '') or '未知地址'
+                                            
                                             tweet = {
-                                                'tweets_title': paraphrased_title,
-                                                'tweets_content': paraphrased_desc,
-                                                'tweets_describe': paraphrased_desc[:200] if len(paraphrased_desc) > 200 else paraphrased_desc,
+                                                'tweets_title': restaurant_name,  # 标题：餐厅名
+                                                'tweets_content': restaurant_address,  # 内容：餐厅地址
+                                                'tweets_describe': restaurant_address[:200] if len(restaurant_address) > 200 else restaurant_address,  # 简介：餐厅地址（截取前200字符）
                                                 'tweets_img': json.dumps(img_paths_for_db) if img_paths_for_db else json.dumps([]),
                                                 'tweets_type_pid': type_pid,
                                                 'tweets_type_cid': type_cid,  # 使用AI返回的子类型ID
