@@ -3,16 +3,52 @@ import time
 import random
 import json
 import csv
+import os
+import sys
 from urllib.parse import quote
 from DrissionPage._pages.chromium_page import ChromiumPage
 from spider_config import *
 
+# 添加当前目录到路径以导入其他模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from ai_paraphrase import get_ai_paraphraser
+    from database import db
+    from config import Config
+    AI_AVAILABLE = True
+except ImportError as e:
+    print(f"警告: AI或数据库模块导入失败: {e}")
+    print("将跳过AI转述和自动上传功能")
+    AI_AVAILABLE = False
+
 class XHSSpider:
-    def __init__(self):
+    def __init__(self, use_ai_paraphrase=False, auto_upload=False):
         self.page = ChromiumPage()
         self.setup_browser()
         self.request_count = 0
         self.last_request_time = 0
+        self.use_ai_paraphrase = use_ai_paraphrase and AI_AVAILABLE
+        self.auto_upload = auto_upload and AI_AVAILABLE
+        self.ai_paraphraser = None
+        
+        if self.use_ai_paraphrase:
+            try:
+                self.ai_paraphraser = get_ai_paraphraser()
+                # 检查Ollama连接
+                if not self.ai_paraphraser.check_ollama_connection():
+                    print("⚠️  警告: Ollama服务未运行，AI转述功能将被禁用")
+                    print("请运行 python setup_ollama.py 设置Ollama")
+                    self.use_ai_paraphrase = False
+                elif not self.ai_paraphraser.check_model_exists():
+                    print(f"⚠️  警告: 模型 {Config.LLM_MODEL} 未下载")
+                    print("请运行 python setup_ollama.py 下载模型")
+                    self.use_ai_paraphrase = False
+                else:
+                    print("✅ AI转述功能已启用")
+            except Exception as e:
+                print(f"⚠️  AI转述初始化失败: {e}")
+                self.use_ai_paraphrase = False
         
     def setup_browser(self):
         """设置浏览器参数"""
@@ -228,14 +264,21 @@ class XHSSpider:
         """处理响应数据"""
         total_notes = 0
         processed_count = 0
+        ai_paraphrased_count = 0
         
         nowt = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         filename = f"{keyword}_{nowt}.csv"
         
+        # 准备用于数据库上传的数据
+        tweets_data = []
+        
         with open(filename, 'w', encoding='utf-8-sig', newline='') as file:
             writer = csv.writer(file)
             # 写入CSV头部
-            writer.writerow(["标题", "描述", "图片链接", "笔记ID"])
+            if self.use_ai_paraphrase:
+                writer.writerow(["标题", "描述", "图片链接", "笔记ID", "转述标题", "转述描述", "内容类型"])
+            else:
+                writer.writerow(["标题", "描述", "图片链接", "笔记ID"])
             
             for response in responses:
                 try:
@@ -255,7 +298,41 @@ class XHSSpider:
                             if note_id and xsec_token:
                                 title, desc, img = self.get_note_detail(note_id, xsec_token)
                                 if title:
-                                    writer.writerow([title, desc, img, note_id])
+                                    final_title = title
+                                    final_desc = desc
+                                    content_type = None
+                                    
+                                    # AI转述
+                                    if self.use_ai_paraphrase and self.ai_paraphraser:
+                                        print(f"正在AI转述: {title[:30]}...")
+                                        paraphrased_title, paraphrased_desc, content_type = self.ai_paraphraser.paraphrase_and_classify(title, desc)
+                                        if paraphrased_title:
+                                            final_title = paraphrased_title
+                                            final_desc = paraphrased_desc
+                                            ai_paraphrased_count += 1
+                                            print(f"✅ 转述完成: {final_title[:30]}...")
+                                        else:
+                                            print(f"⚠️  转述失败，使用原文")
+                                    
+                                    # 写入CSV
+                                    if self.use_ai_paraphrase:
+                                        writer.writerow([title, desc, img, note_id, final_title, final_desc, content_type or ""])
+                                    else:
+                                        writer.writerow([title, desc, img, note_id])
+                                    
+                                    # 准备数据库数据
+                                    if self.auto_upload:
+                                        tweet = {
+                                            'tweets_title': final_title,
+                                            'tweets_content': final_desc,
+                                            'tweets_describe': final_desc[:200] if len(final_desc) > 200 else final_desc,
+                                            'tweets_img': json.dumps(img.split(',') if img else []),
+                                            'tweets_type_pid': Config.DEFAULT_TYPE_PID,
+                                            'tweets_type_cid': Config.DEFAULT_TYPE_CID,
+                                            'tweets_user': '爬虫',
+                                        }
+                                        tweets_data.append(tweet)
+                                    
                                     processed_count += 1
                                     
                                     # 每处理一定数量后保存
@@ -271,7 +348,21 @@ class XHSSpider:
                 except Exception as e:
                     print(f"处理响应时出现错误: {e}")
         
-        print(f"总共处理了 {total_notes} 条数据，成功保存 {processed_count} 条到 {filename}")
+        print(f"\n总共处理了 {total_notes} 条数据，成功保存 {processed_count} 条到 {filename}")
+        if self.use_ai_paraphrase:
+            print(f"AI转述成功: {ai_paraphrased_count} 条")
+        
+        # 自动上传到数据库
+        if self.auto_upload and tweets_data:
+            print(f"\n开始上传 {len(tweets_data)} 条数据到数据库...")
+            try:
+                from batch_upload_tweets import batch_insert_tweets
+                result = batch_insert_tweets(tweets_data)
+                print(f"✅ 上传完成: 成功 {result['success']} 条, 失败 {result['failed']} 条")
+            except Exception as e:
+                print(f"❌ 自动上传失败: {e}")
+                print("可以稍后手动使用 batch_upload_tweets.py 上传")
+        
         return filename
         
     def login(self):
@@ -314,7 +405,22 @@ class XHSSpider:
 
 def main():
     """主函数"""
-    spider = XHSSpider()
+    use_ai = False
+    auto_upload = False
+    
+    if AI_AVAILABLE:
+        print("=" * 60)
+        print("爬虫配置选项")
+        print("=" * 60)
+        ai_choice = input("是否启用AI转述功能？(y/n，默认n): ").strip().lower()
+        use_ai = ai_choice == 'y'
+        
+        if use_ai:
+            upload_choice = input("是否自动上传到数据库？(y/n，默认n): ").strip().lower()
+            auto_upload = upload_choice == 'y'
+        print()
+    
+    spider = XHSSpider(use_ai_paraphrase=use_ai, auto_upload=auto_upload)
     
     try:
         keyword = input("请输入你要抓取的关键词：")
