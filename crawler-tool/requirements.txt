@@ -1,15 +1,22 @@
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-lxml>=4.9.0
-python-dotenv>=1.0.0
-urllib3>=2.0.0
-selenium>=4.15.0
-webdriver-manager>=4.0.0
-pandas>=2.0.0
+# 爬虫核心依赖（使用DrissionPage替代Selenium）
+DrissionPage>=4.1.0
+requests>=2.32.0
+urllib3>=2.5.0
+
+# 数据库相关
 pymysql>=1.1.0
 sqlalchemy>=2.0.0
+
+# 数据处理
+pandas>=2.0.0
 openpyxl>=3.1.0
+numpy>=1.24.0
+
+# 其他工具
+python-dotenv>=1.0.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+paramiko>=3.0.0
 Pillow>=10.0.0
 opencv-python>=4.8.0
-numpy>=1.24.0
 psutil>=5.9.0
