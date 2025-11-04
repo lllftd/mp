@@ -1,0 +1,165 @@
+@use '@/styles/PingFangSC.scss' as *;
+@use '@/styles/SourceHanSansSC.scss' as *;
+@use '@/styles/zYuWen.scss' as *;
+
+/* 定义全局样式文件 */
+.container {
+  /* 
+  uniapp 之 获取底部安全距离，状态栏高度等
+  https://blog.csdn.net/Zhuangvi/article/details/126683859 */
+  // #ifndef H5
+  min-height: 100vh;
+  // #endif
+  // #ifdef H5
+  // min-height: calc(100vh - var(--window-bottom));
+  // #endif
+  background: #f8fbff;
+  /* background: #F7F7F7; */
+  width: 100%;
+  font-family: PingFangSC;
+}
+
+.container_bg_white {
+  min-height: 100vh;
+  width: 100%;
+  font-family: PingFang HK-Semibold, PingFang HK;
+}
+
+view,
+text {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  /* font-size: 27rpx; */
+}
+
+/* flex布局 */
+.global_flex {
+  display: flex;
+}
+
+.global_flex_center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.global_flex_jc {
+  display: flex;
+  justify-content: center;
+}
+
+.global_flex_jsb {
+  display: flex;
+  justify-content: space-between;
+}
+
+.global_flex_ac {
+  display: flex;
+  align-items: center;
+}
+
+.global_flex_jsb_ac {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.global_flex_jsa_ac {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.global_flex_col_jc_ac {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-column {
+  flex-direction: column;
+}
+
+.flex-x-center {
+  justify-content: center;
+}
+
+.flex-x-around {
+  justify-content: space-around;
+}
+
+.flex-x-between {
+  justify-content: space-between;
+}
+
+.flex-y-center {
+  align-items: center;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+/* 单行文本超出隐藏 */
+.global_text_warp {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 双行文本超出隐藏 */
+.global_text_warp_two {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* 三行文本超出隐藏 */
+.global_text_warp_three {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.pt20 {
+  padding-top: 20px;
+}
+
+.pd24 {
+  padding: 0 24rpx;
+}
+
+.mg24 {
+  margin: 0 24rpx;
+}
+
+.tac {
+  text-align: center;
+}
+
+/* 渐变黄色按钮 */
+.gradient-yellow-btn {
+  margin-left: 53rpx;
+  width: 640rpx;
+  height: 88rpx;
+  border-radius: 48rpx;
+  background: linear-gradient(277deg, #caa271 10%, #f1d0a3 124%);
+  backdrop-filter: blur(54.37rpx);
+  font-family: PingFangSC;
+  font-size: 32rpx;
+  font-weight: normal;
+  line-height: 88rpx;
+  text-align: center;
+  letter-spacing: 0rpx;
+  color: #ffffff;
+}

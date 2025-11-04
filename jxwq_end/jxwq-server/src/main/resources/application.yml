@@ -1,0 +1,106 @@
+server:
+  port: 8080 # 服务端口
+#  servlet:
+#    context-path: /api  # 服务上下文路径
+
+spring:
+  profiles:
+    # 激活的环境配置 约定:application-*.yml 写*部分的
+    active: dev # prod
+  mvc:
+    throw-exception-if-no-handler-found: true # 未找到请求处理方法时，返回404错误 出现错误时, 直接抛出异常，而不是返回错误页面
+    # https://blog.csdn.net/qq_42006801/article/details/125279281
+    servlet:
+      # 设置成0或正整数，项目启动时执行初始化即可解决
+      load-on-startup: 1
+  web:
+    resources:
+      add-mappings: false # 禁用默认的静态资源映射，防止与自定义的静态资源冲突
+      static-locations: classpath:/uploadFiles/ # 静态资源路径
+  main:
+    # 允许循环引用， 防止Bean之间互相依赖
+    allow-circular-references: true
+  # 数据库连接信息
+  datasource:
+    druid:
+#      mysql:
+      #        # 解决报错 discard long time none received connection 原理是让验证空闲连接使用 select 1，而不是使用MySQL的Ping，这样就刷新了上次使用时间，不会出现空闲 60秒以上的连接
+      #        usePingMethod: false
+      driver-class-name: ${jxwq.datasource.driver-class-name}
+      url: jdbc:mysql://${jxwq.datasource.host}:${jxwq.datasource.port}/${jxwq.datasource.database}?serverTimezone=Asia/Shanghai&useUnicode=true&character_set_server=utf8mb4_general_ci&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
+      username: ${jxwq.datasource.username}
+      password: ${jxwq.datasource.password}
+  redis:
+    host: ${jxwq.redis.host}
+    port: ${jxwq.redis.port}
+    password: ${jxwq.redis.password}
+    database: ${jxwq.redis.database}
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 10MB
+
+mybatis:
+  configuration:
+    #下划线转驼峰
+    map-underscore-to-camel-case: true
+
+mybatis-plus: # https://baomidou.com/reference/
+  #mapper配置文件
+  mapper-locations: classpath:mapper/*.xml # 扫描mapper路径下的所有xml文件
+  type-aliases-package: com.jxwq.entity # 扫描entity路径下的所有类
+  configuration:
+    #在映射实体或者属性时，将数据库中表名和字段名中的下划线去掉，按照驼峰命名法映射
+    # 数据库字段驼峰转下划线 如：user_name(数据库) -> userName(java里实体类是驼峰命名)
+    map-underscore-to-camel-case: true
+    # 是 MyBatis 默认的日志实现，它将所有日志信息输出到标准输出（stdout）。
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: AUTO
+      # logic-delete-field: is_deleted # 全局逻辑删除的实体字段名(since 3.0.7)
+    banner: false # 不显示启动的banner图
+
+logging:
+  level:
+    com:
+      jxwq:
+        mapper: debug # mapper层日志级别
+        service: info # service层日志级别
+        controller: info # controller层日志级别
+
+file:
+  path: ${file.path}
+  prefix: /uploadFiles
+  img-prefix: /images
+
+jxwq:
+  jwt:
+    # 设置web端jwt签名加密时使用的秘钥
+    admin-secret-key: jxwq
+    # 设置web端jwt过期时间
+    admin-ttl: 172800000  # 单位毫秒 7200000=2小时 86400000=1天  172800000=2天
+    # 设置web端传递过来的令牌名称
+    admin-token-name: token
+
+    # 设置用户端jwt签名加密时使用的秘钥
+    client-secret-key: jxwq_client
+    # 设置用户端jwt过期时间
+    client-ttl: 604800000  # 单位毫秒 604800000=7天
+    # 设置用户端传递过来的令牌名称
+    client-token-name: authentication
+  # 阿里云OSS配置
+  alioss:
+    endpoint: 替换成自己的
+    replace-prefix: 替换成自己的 # 阿里云OSS替换前缀
+    access-key-id: 替换成自己的
+    access-key-secret: 替换成自己的
+    bucket-name: 替换成自己的
+    dir: 替换成自己的 # 文件夹名
+    # expires: 3600L * 1000 * 24 * 365 # 365天的有效期 阿里云OSS文件链接有效期，单位为秒
+  wechat:
+    appid: wxae18d593780245d8
+    secret: 5442d4d1c8c85cee8963d0a4412ea27e
+
+
+# 带${}的是配置文件中需要替换的变量，如${jxwq.datasource.host}，${jxwq.datasource.port}等

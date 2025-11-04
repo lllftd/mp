@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.jxwq.mapper.RandTweetMapper">
+
+    <resultMap id="tweetsResultMap" type="Map">
+        <id property="id" column="id"/>
+        <result property="tweetsTitle" column="tweets_title"/>
+        <result property="tweetsUser" column="tweets_user"/>
+        <result property="tweetsDescribe" column="tweets_describe"/>
+        <result property="tweetsImg" column="tweets_img"/>
+        <result property="tweetsContent" column="tweets_content"/>
+        <result property="likeNum" column="like_num"/>
+        <result property="collectNum" column="collect_num"/>
+        <result property="browseNum" column="browse_num"/>
+        <result property="typePidName" column="type_pid_name"/>
+        <result property="typeCidNames" column="type_cid_names"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <!-- resultType="com.jxwq.entity.VTweets" -->
+    <!--<select id="randomTweets" resultType="Map" resultMap="tweetsResultMap">-->
+    <!--    SELECT id,-->
+    <!--           tweets_title,-->
+    <!--           tweets_user,-->
+    <!--           tweets_describe,-->
+    <!--           tweets_img,-->
+    <!--           tweets_content,-->
+    <!--           like_num,-->
+    <!--           collect_num,-->
+    <!--           browse_num,-->
+    <!--           type_pid_name,-->
+    <!--           type_cid_names,-->
+    <!--           CONVERT(create_time, CHAR) AS create_time-->
+    <!--    FROM v_tweets-->
+    <!--    ORDER BY RAND()-->
+    <!--    LIMIT 10;-->
+    <!--</select>-->
+
+    <!-- 获取用户喜欢的推文子类 -->
+    <select id="getLikedTweetIdsByUserId" resultType="Map">
+        SELECT (select tweets_type_cid from tweets where id = tweets_id)  as tweets_type_cid,
+               (select type_cid_names from v_tweets where id = tweets_id) as type_cid_names
+        FROM tweets_records
+        WHERE client_user_id = #{userId}
+          AND type = 'like'
+    </select>
+
+    <!-- 根据关键词获取推文类型的ID -->
+    <select id="getTypeIdsByKeyword" resultType="int">
+        SELECT id
+        FROM tweets_type
+        WHERE name LIKE CONCAT('%', #{keyword,jdbcType=VARCHAR}, '%')
+          AND parent_id IS NOT NULL
+    </select>
+
+    <!-- 根据推文类型ID获取推文 返回随机5条 传入-1,22,3这样的字符串 -->
+    <select id="getTweetsByTypeIds" resultMap="tweetsResultMap">
+    <!-- 这么写不支持,最好写成存储过程 -->
+    <!--    SET @ids = #{typeIds, jdbcType=VARCHAR};-->
+    <!--    SET @sql = CONCAT('SELECT * FROM tweets WHERE ',-->
+    <!--    (SELECT GROUP_CONCAT(CONCAT('FIND_IN_SET(', QUOTE(id), ', tweets_type_cid)') SEPARATOR ' OR ')-->
+    <!--    FROM (SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(@ids, ',', numbers.n), ',', -1) id-->
+    <!--    FROM (SELECT 1 n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4) numbers-->
+    <!--    WHERE numbers.n &lt;= LENGTH(@ids) - LENGTH(REPLACE(@ids, ',', '')) + 1) ids),-->
+    <!--    ' ORDER BY RAND() LIMIT 5');-->
+
+    <!--    PREPARE stmt FROM @sql;-->
+    <!--    EXECUTE stmt;-->
+    <!--    DEALLOCATE PREPARE stmt;-->
+        <!--SELECT-->
+        <!--id,-->
+        <!--tweets_title,-->
+        <!--tweets_user,-->
+        <!--tweets_describe,-->
+        <!--tweets_img,-->
+        <!--tweets_content,-->
+        <!--like_num,-->
+        <!--collect_num,-->
+        <!--browse_num,-->
+        <!--type_pid_name,-->
+        <!--type_cid_names,-->
+        <!--CONVERT(create_time, CHAR) AS create_time-->
+        <!--    FROM v_tweets WHERE tweets_type_cid IN-->
+        <!--<foreach item="item" index="index" collection="list" open="(" separator="," close=")">-->
+        <!--    #{item}-->
+        <!--</foreach>-->
+        <!--LIMIT 5-->
+
+        SELECT
+        id,
+        tweets_title,
+        tweets_user,
+        tweets_describe,
+        tweets_img,
+        tweets_content,
+        like_num,
+        collect_num,
+        browse_num,
+        type_pid_name,
+        type_cid_names,
+        CONVERT(create_time, CHAR) AS create_time
+        FROM v_tweets
+        WHERE
+        <foreach item="id" index="index" collection="list" open="(" separator=" OR " close=")">
+            FIND_IN_SET(#{id}, tweets_type_cid)
+        </foreach>
+        ORDER BY RAND()
+        LIMIT 5
+    </select>
+
+    <!-- 根据已喜欢的推文类型推荐相似的推文 -->
+    <select id="getSimilarTweets" resultMap="tweetsResultMap">
+        SELECT
+        id,
+        tweets_title,
+        tweets_user,
+        tweets_describe,
+        tweets_img,
+        tweets_content,
+        like_num,
+        collect_num,
+        browse_num,
+        type_pid_name,
+        type_cid_names,
+        CONVERT(create_time, CHAR) AS create_time
+        FROM v_tweets WHERE
+        <foreach item="type_c_id" index="index" collection="list" open="(" separator=" OR " close=")">
+            FIND_IN_SET(#{type_c_id}, tweets_type_cid)
+        </foreach>
+        ORDER BY RAND()
+        LIMIT 5
+    </select>
+
+    <!-- 随机获取推文 -->
+    <select id="getRandomTweets" resultMap="tweetsResultMap">
+        SELECT id,
+               tweets_title,
+               tweets_user,
+               tweets_describe,
+               tweets_img,
+               tweets_content,
+               like_num,
+               collect_num,
+               browse_num,
+               type_pid_name,
+               type_cid_names,
+               CONVERT(create_time, CHAR) AS create_time
+        FROM v_tweets
+        ORDER BY RAND()
+        LIMIT #{count}
+    </select>
+
+</mapper>
