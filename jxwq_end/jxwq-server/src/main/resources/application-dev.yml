@@ -1,0 +1,24 @@
+file:
+  path: "E:\\Work_Projects\\Jxwq\\jxwq_end\\uploadFiles\\" # 上传文件存储在本地的根路径
+
+jxwq:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    host: localhost
+    port: 3306
+    database: jxwq_end
+    username: root
+    password: adminMysql
+  redis:
+    host: localhost # redis主机地址
+    port: 6379 # redis端口
+    password: root # redis密码
+    database: 10 # redis数据库
+
+recommendation:
+  python:
+    path: /Users/hassan/Desktop/mp/recommendation-service  # Python脚本目录路径（绝对路径）
+    command: python3                        # Python命令：python3 或 python
+  service:
+    method: hybrid               # 推荐方法：collaborative/cf, content/cb, hybrid（混合推荐，默认）, popular
+    count: 20                   # 默认推荐数量

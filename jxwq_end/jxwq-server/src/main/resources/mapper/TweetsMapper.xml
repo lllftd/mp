@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.jxwq.mapper.TweetsMapper">
+
+    <resultMap id="tweetsRecordsResultMap" type="Map">
+        <id property="id" column="id"/>
+        <result property="clientUserId" column="client_user_id"/>
+        <result property="tweetsId" column="tweets_id"/>
+        <result property="type" column="type"/>
+        <result property="createTime" column="create_time"/>
+        <result property="tweetsTitle" column="tweets_title"/>
+        <result property="tweetsImg" column="tweets_img"/>
+    </resultMap>
+    <!-- javaType="java.util.Date" jdbcType="TIMESTAMP" -->
+
+    <!-- 查询当前推文是否被点赞、收藏 - 根据推文id和用户id -->
+    <select id="getIsLikeCollect" resultType="Map">
+        SELECT id, client_user_id, tweets_id, type
+        FROM tweets_records
+        WHERE client_user_id = #{clientUserId,jdbcType=INTEGER}
+          AND type in ('like', 'collect')
+          AND tweets_id = #{tweetsId,jdbcType=INTEGER}
+    </select>
+
+    <!-- 查询个人的点赞、收藏、浏览记录总数用来分页 -->
+    <select id="countTweetsRecords" resultType="integer">
+        SELECT COUNT(*) AS total
+        FROM tweets_records
+        WHERE client_user_id = #{clientUserId,jdbcType=INTEGER}
+          AND type = #{type,jdbcType=VARCHAR}
+    </select>
+
+    <!-- resultType="com.jxwq.entity.VTweets" 通过创建时间倒序
+     #{pageSize,jdbcType=INTEGER}：每页显示的记录数。
+     #{offset,jdbcType=INTEGER}：起始位置，计算公式为 (currentPage - 1) * pageSize，其中 currentPage 是当前页码。
+     -->
+    <!-- 获取点赞、收藏、浏览记录列表 -->
+    <select id="getRecordListByTypeAndUserId" resultType="Map" resultMap="tweetsRecordsResultMap">
+        SELECT t_recode.id,
+               t_recode.client_user_id,
+               t_recode.tweets_id,
+               t_recode.type,
+               CONVERT(t_recode.create_time, CHAR) AS create_time,
+               t.tweets_title,
+               t.tweets_img
+        FROM tweets_records t_recode
+                 INNER JOIN tweets t ON t.id = t_recode.tweets_id
+        WHERE t_recode.client_user_id = #{clientUserId,jdbcType=INTEGER}
+          AND t_recode.type = #{type,jdbcType=VARCHAR}
+        ORDER BY t_recode.create_time DESC
+        LIMIT #{pageSize,jdbcType=INTEGER} OFFSET #{offset,jdbcType=INTEGER}
+    </select>
+
+    <!-- 增加一条记录 -->
+    <insert id="insertTweetsRecord">
+        INSERT INTO tweets_records (client_user_id, tweets_id, type)
+        VALUES (#{clientUserId,jdbcType=INTEGER},
+                #{tweetsId,jdbcType=INTEGER},
+                #{type,jdbcType=VARCHAR})
+    </insert>
+
+    <!-- 删除一条推文记录 -->
+    <delete id="deleteTweetsRecord">
+        DELETE
+        from tweets_records
+        where id = #{id,jdbcType=INTEGER}
+    </delete>
+
+    <!-- 查找浏览记录 -->
+    <select id="getBrowseRecord" resultType="Map">
+        SELECT id
+        FROM tweets_records
+        where type = 'browse'
+          AND client_user_id = #{clientUserId,jdbcType=INTEGER}
+          AND tweets_id = #{tweetsId,jdbcType=INTEGER}
+    </select>
+
+    <!-- 查找点赞记录 -->
+    <select id="getLikeRecord" resultType="Map">
+        SELECT id
+        FROM tweets_records
+        where type = 'like'
+          AND client_user_id = #{clientUserId,jdbcType=INTEGER}
+          AND tweets_id = #{tweetsId,jdbcType=INTEGER}
+    </select>
+
+    <!-- 更新推文记录表时间 -->
+    <update id="updateTweetsRecordCreateTime">
+        UPDATE tweets_records
+        SET create_time = now()
+        where id = #{id,jdbcType=INTEGER}
+    </update>
+
+    <!-- 更新推文表点赞、收藏、浏览记录数 add就是+1 sub就是-1 浏览量一般不会减的
+    GREATEST函数的使用。这个函数会返回其参数中的最大值。因此，在尝试将某个计数器减1时，如果结果小于0，则GREATEST会返回0而不是一个负数。
+    -->
+    <update id="updateTweetsCount" parameterType="Map">
+        UPDATE tweets set
+        <if test="type=='like' and add!=null">like_num=like_num + 1</if>
+        <if test="type=='like' and sub!=null">like_num=GREATEST(like_num - 1, 0)</if>
+        <if test="type=='collect' and add!=null">collect_num=collect_num + 1</if>
+        <if test="type=='collect' and sub!=null">collect_num=GREATEST(collect_num - 1, 0)</if>
+        <if test="type=='browse' and add!=null">browse_num=browse_num + 1</if>
+        <if test="type=='browse' and sub!=null">browse_num=GREATEST(browse_num - 1, 0)</if>
+        WHERE id = #{id,jdbcType=INTEGER}
+    </update>
+
+    <resultMap id="tweetsEvaluateResultMap" type="Map">
+        <id property="id" column="id"/>
+        <result property="clientUserId" column="client_user_id"/>
+        <result property="nikeName" column="nike_name"/>
+        <result property="avatar" column="avatar"/>
+        <result property="evaluateContent" column="evaluate_content"/>
+        <result property="evaluateImg" column="evaluate_img"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <!-- 获取推文评论内容 -->
+    <select id="getTweetsEvaluate" resultMap="tweetsEvaluateResultMap">
+        SELECT id,
+               client_user_id,
+               (SELECT nick_name FROM client_user user WHERE user.id = client_user_id) as nike_name,
+               (SELECT avatar FROM client_user user WHERE user.id = client_user_id)    as avatar,
+               evaluate_img,
+               evaluate_content,
+               CONVERT(create_time, CHAR)                                              AS create_time
+        FROM tweets_evaluate
+        WHERE tweets_id = #{tweetsId,jdbcType=INTEGER}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 发布评论 -->
+    <insert id="insertTweetsEvaluate" parameterType="Map">
+        INSERT INTO tweets_evaluate (client_user_id, tweets_id, evaluate_content
+        <if test="evaluateImg!=null and evaluateImg!=''">,evaluate_img</if>
+        )
+        values (
+        #{clientUserId,jdbcType=INTEGER},
+        #{tweetsId,jdbcType=INTEGER},
+        #{evaluateContent,jdbcType=VARCHAR}
+        <if test="evaluateImg!=null and evaluateImg!=''">,#{evaluateImg,jdbcType=VARCHAR}</if>
+        )
+    </insert>
+</mapper>

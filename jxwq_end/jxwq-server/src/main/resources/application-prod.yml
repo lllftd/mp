@@ -1,0 +1,24 @@
+file:
+  path: classpath:/uploadFiles/ # 上传文件存储在本地的根路径
+
+jxwq:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    host: localhost
+    port: 3306
+    database: jxwq_end
+    username: root
+    password: adminMysql
+  redis:
+    host: localhost # redis主机地址
+    port: 6379 # redis端口
+    password: root # redis密码
+    database: 10 # redis数据库
+    #  alioss:
+    #    endpoint: oss-cn-shanghai.aliyuncs.com
+    #    replace-prefix: js.njhanqian.tech # 阿里云OSS替换前缀
+    #    access-key-id: LTAI5tQFWscrkeWGKMqW4ajv
+    #    access-key-secret: 2J2cgjaoMJxgn9Z0Topki7wJYJIRdk
+    #    bucket-name: dz-file-upload
+    #    dir: share/
+    # expires: 3600L * 1000 * 24 * 365 # 365天的有效期 阿里云OSS文件链接有效期，单位为秒

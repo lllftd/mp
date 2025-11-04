@@ -1,32 +1,18 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+*$py.class
+*.so
+.Python
 
 # Virtual environments
 env/
 venv/
+ENV/
 .venv/
+.venv
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-*.egg-info/
-
-downloads/
-
-# Unit test / coverage reports
+# Unit test / coverage
 .pytest_cache/
 .mypy_cache/
 .coverage
@@ -34,20 +20,80 @@ coverage.xml
 
 # Logs
 *.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# IDEs and editors
+# Databases
+*.db
+*.sqlite
+
+# Packaging / build
+*.egg-info/
+dist/
+build/
+develop-eggs/
+sdist/
+var/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+pip-wheel-metadata/
+
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # OS files
 .DS_Store
 Thumbs.db
+*.local
 
 # Environment files
 .env
+.env.local
+.env.*.local
 .env.*
 
-# Others
-pip-wheel-metadata/
+# Node.js
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
+# Chrome User Data (large directory)
+crawler-tool/chrome_user_data/
+
+# Downloads and saved data
+crawler-tool/downloads/
+crawler-tool/saved_data/
+
+# TypeScript generated
+auto-imports.d.ts
+components.d.ts
+
+# Java
+target/
+.mvn/wrapper/maven-wrapper.jar
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+*.iws
+*.iml
+*.ipr
 

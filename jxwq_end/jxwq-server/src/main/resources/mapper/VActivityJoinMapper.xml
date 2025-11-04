@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.jxwq.mapper.VActivityJoinMapper">
+
+    <select id="getJoinActivityIdsByUserId" resultType="Map">
+        SELECT id, act_id
+        FROM activity_join
+        where client_user_id = #{clientUserId}
+    </select>
+
+    <select id="isJoin" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM activity_join
+        where client_user_id = #{clientUserId}
+          and act_id = #{actId}
+    </select>
+
+    <insert id="joinActivity">
+        insert into activity_join
+        set act_id         = #{actId},
+            client_user_id = #{clientUserId}
+    </insert>
+
+    <insert id="setClientMsg">
+        insert into client_msg (client_user_id, msg_content)
+        values (#{clientUserId}, #{msgContent, jdbcType=VARCHAR})
+    </insert>
+
+
+    <resultMap id="tweetsResultMap" type="Map">
+        <id property="id" column="id"/>
+        <result property="msgContent" column="msg_content"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="getClientMsg" resultType="Map" resultMap="tweetsResultMap">
+        SELECT CONVERT(t.create_time, CHAR) AS create_time,
+               msg_content
+        FROM client_msg t
+        where client_user_id = #{clientUserId}
+    </select>
+</mapper>
