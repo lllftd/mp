@@ -46,21 +46,39 @@ def validate_type_ids(type_pid: int, type_cids: str) -> Tuple[bool, str]:
         if type_cids:
             cid_list = [cid.strip() for cid in str(type_cids).split(',') if cid.strip()]
             if cid_list:
-                placeholders = ','.join([f':cid{i}' for i in range(len(cid_list))])
-                cid_query = f"""
-                    SELECT id FROM tweets_type 
-                    WHERE id IN ({placeholders}) AND parent_id = :parent_id
-                """
-                params = {f'cid{i}': int(cid) for i, cid in enumerate(cid_list)}
-                params['parent_id'] = type_pid
-                
-                cid_result = db.execute_query(cid_query, params)
-                found_ids = set(cid_result['id'].tolist())
-                expected_ids = {int(cid) for cid in cid_list}
-                
-                if found_ids != expected_ids:
-                    missing = expected_ids - found_ids
-                    return False, f"子类型ID {missing} 不存在或不属于父类型 {type_pid}"
+                # 使用更安全的方式构建查询，避免参数绑定问题
+                try:
+                    # 先转换为整数列表
+                    cid_int_list = [int(cid) for cid in cid_list]
+                    
+                    # 构建参数化的IN查询
+                    placeholders = ','.join([f':cid{i}' for i in range(len(cid_int_list))])
+                    cid_query = f"""
+                        SELECT id FROM tweets_type 
+                        WHERE id IN ({placeholders}) AND parent_id = :parent_id
+                    """
+                    
+                    # 构建参数字典
+                    params = {}
+                    for i, cid_val in enumerate(cid_int_list):
+                        params[f'cid{i}'] = cid_val
+                    params['parent_id'] = type_pid
+                    
+                    # 执行查询
+                    cid_result = db.execute_query(cid_query, params)
+                    
+                    # 检查结果
+                    if cid_result.empty:
+                        return False, f"子类型ID {type_cids} 不存在或不属于父类型 {type_pid}"
+                    
+                    found_ids = set(cid_result['id'].tolist())
+                    expected_ids = set(cid_int_list)
+                    
+                    if found_ids != expected_ids:
+                        missing = expected_ids - found_ids
+                        return False, f"子类型ID {missing} 不存在或不属于父类型 {type_pid}"
+                except ValueError as ve:
+                    return False, f"子类型ID格式错误: {str(ve)}"
         
         return True, ""
     except Exception as e:
@@ -140,26 +158,40 @@ def prepare_tweet_data(row: Dict) -> Dict:
         raise ValueError("图片(tweets_img)不能为空")
     
     img_str = str(img_raw).strip()
+    img_list = []
+    
     # 如果已经是JSON数组格式，直接使用；否则转换为JSON数组
     if img_str.startswith('[') and img_str.endswith(']'):
         try:
             # 验证是否为有效JSON
-            json.loads(img_str)
-            tweet['tweets_img'] = img_str
+            img_list = json.loads(img_str)
+            if not isinstance(img_list, list):
+                img_list = [img_list]
         except json.JSONDecodeError:
             # 如果不是有效JSON，按逗号分隔处理
             img_list = [url.strip() for url in img_str.strip('[]').split(',') if url.strip()]
-            tweet['tweets_img'] = json.dumps(img_list, ensure_ascii=False)
     else:
         # 逗号分隔的URL列表，转换为JSON数组
         img_list = [url.strip() for url in img_str.split(',') if url.strip()]
-        if not img_list:
-            raise ValueError("图片(tweets_img)不能为空")
-        tweet['tweets_img'] = json.dumps(img_list, ensure_ascii=False)
     
-    # 验证图片字段长度（JSON字符串）
-    if len(tweet['tweets_img']) > 300:
-        raise ValueError(f"图片字段长度超过300字符限制: {len(tweet['tweets_img'])}")
+    if not img_list:
+        raise ValueError("图片(tweets_img)不能为空")
+    
+    # 如果图片列表的JSON字符串超过300字符，逐步减少图片数量
+    max_length = 300
+    while len(json.dumps(img_list, ensure_ascii=False)) > max_length and len(img_list) > 1:
+        img_list = img_list[:-1]  # 移除最后一个图片
+    
+    tweet['tweets_img'] = json.dumps(img_list, ensure_ascii=False)
+    
+    # 最终验证图片字段长度（如果单个图片URL就超过300字符，至少保留一个）
+    if len(tweet['tweets_img']) > max_length:
+        # 如果即使只有一个图片也超过限制，截断单个URL
+        if len(img_list) == 1 and len(img_list[0]) > max_length - 10:  # 留出JSON格式空间
+            # 截断URL，保留前面的部分
+            max_url_length = max_length - 10  # 减去 '[""]' 的长度
+            img_list[0] = img_list[0][:max_url_length]
+            tweet['tweets_img'] = json.dumps(img_list, ensure_ascii=False)
     
     # 内容（必填）
     tweet['tweets_content'] = str(row.get('tweets_content') or row.get('content', '')).strip()

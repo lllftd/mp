@@ -35,9 +35,29 @@ class Database:
         with self.engine.connect() as conn:
             if params:
                 if isinstance(params, dict):
-                    result = conn.execute(text(query), params)
-                    rows = [dict(row) for row in result]
-                    return pd.DataFrame(rows, columns=result.keys())
+                    try:
+                        # 使用text()和参数绑定
+                        result = conn.execute(text(query), params)
+                        # 获取列名并转换为列表
+                        if result.returns_rows:
+                            columns = list(result.keys())
+                            rows = []
+                            for row in result:
+                                # 确保row可以转换为字典
+                                if hasattr(row, '_asdict'):
+                                    rows.append(row._asdict())
+                                elif hasattr(row, '_mapping'):
+                                    rows.append(dict(row._mapping))
+                                else:
+                                    # 手动构建字典
+                                    rows.append(dict(zip(columns, row)))
+                            return pd.DataFrame(rows)
+                        else:
+                            return pd.DataFrame()
+                    except Exception as e:
+                        # 如果text()方式失败，尝试使用pandas方式
+                        logger.warning(f"使用text()执行查询失败，尝试pandas方式: {e}")
+                        return pd.read_sql(query, conn, params=params)
                 return pd.read_sql(query, conn, params=params)
             return pd.read_sql(query, conn)
 
