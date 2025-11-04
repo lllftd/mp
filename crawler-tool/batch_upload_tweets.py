@@ -16,13 +16,11 @@ import os
 import json
 import csv
 import logging
-from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 
 import pandas as pd
 from sqlalchemy import text
 
-# 添加当前目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import Config
@@ -235,13 +233,11 @@ def prepare_tweet_data(row: Dict) -> Dict:
     if update_user:
         tweet['update_user'] = str(update_user).strip()[:10]
     
-    # 字段长度验证
+    # 字段长度验证（集中验证）
     if len(tweet['tweets_title']) > 120:
         raise ValueError(f"标题长度超过120字符限制: {len(tweet['tweets_title'])}")
     if len(tweet['tweets_describe']) > 400:
         raise ValueError(f"简介长度超过400字符限制: {len(tweet['tweets_describe'])}")
-    if len(tweet['tweets_img']) > 300:
-        raise ValueError(f"图片字段长度超过300字符限制: {len(tweet['tweets_img'])}")
     if len(tweet['tweets_content']) > 2000:
         raise ValueError(f"内容长度超过2000字符限制: {len(tweet['tweets_content'])}")
     if len(tweet['tweets_type_cid']) > 70:
