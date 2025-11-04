@@ -22,6 +22,7 @@ from ai_paraphrase import get_ai_paraphraser
 from database import db
 from config import Config
 from batch_upload_tweets import batch_insert_tweets
+from username_generator import get_random_username
 
 try:
     from PIL import Image
@@ -450,7 +451,7 @@ class IntegratedSpider:
                                         'tweets_img': json.dumps(saved_image_paths) if saved_image_paths else json.dumps(img.split(',') if img else []),
                                         'tweets_type_pid': Config.DEFAULT_TYPE_PID,
                                         'tweets_type_cid': Config.DEFAULT_TYPE_CID,
-                                        'tweets_user': Config.DEFAULT_USER,
+                                        'tweets_user': get_random_username(),  # 随机生成用户名
                                     }
                                     tweets_data.append(tweet)
                                     
