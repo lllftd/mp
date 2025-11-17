@@ -1,5 +1,5 @@
 @echo off
-REM 集成爬虫脚本 - 一键运行：爬虫 → AI转述 → 水印清洗 → 上传数据库
+REM 爬虫工具启动脚本 - 完整流程：爬虫提取 → AI转述内容及评论 → 上传数据库
 
 cd /d "%~dp0"
 
@@ -34,12 +34,27 @@ if not exist "%VENV_PATH%\.deps_installed" (
 )
 
 REM 检查参数
-if "%~2"=="" (
-    echo 用法: run.bat ^<关键词^> ^<页数^>
-    echo 示例: run.bat 深圳美食 5
-    exit /b 1
+if "%~1"=="" (
+    echo.
+    echo 用法: run.bat [选项]
+    echo.
+    echo 完整流程模式（推荐）:
+    echo   run.bat --title "笔记标题" --description "笔记描述" --city 上海
+    echo   run.bat --file notes.json --city 上海
+    echo.
+    echo 其他工具:
+    echo   批量更新地址: python app\address_service.py --city 上海 --limit 100
+    echo   生成评论:      python app\generate_comments.py --limit 50
+    echo   搜索图片:      python app\search_images.py --method bing --city 上海 --limit 10
+    echo.
+    echo 示例：
+    echo   run.bat --title "上海美食推荐" --description "今天去了xxx餐厅..." --city 上海
+    echo   run.bat --file notes.json --city 上海 --limit 10
+    echo   python app\search_images.py --method bing --city 上海 --limit 10
+    echo.
+    exit /b 0
 )
 
-REM 运行集成爬虫脚本
+REM 运行爬虫主入口脚本
 python "%SCRIPT_DIR%crawler.py" %*
 

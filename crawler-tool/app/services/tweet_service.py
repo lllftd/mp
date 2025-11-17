@@ -1,40 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-批量上传帖子到数据库
-
-用法:
-    python3 batch_upload_tweets.py <file_path> [--format csv|json|excel]
-    
-示例:
-    python3 batch_upload_tweets.py tweets.csv --format csv
-    python3 batch_upload_tweets.py tweets.json --format json
-    python3 batch_upload_tweets.py tweets.xlsx --format excel
+推文数据处理模块
+提供推文数据准备、插入等功能
 """
-import sys
-import os
 import json
-import csv
 import logging
-from typing import List, Dict, Optional, Tuple
+import os
+import sys
+from typing import Dict, List, Optional, Tuple
 
-import pandas as pd
 from sqlalchemy import text
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 添加项目根目录到路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from config import Config
-from database import db
+from base.database import db
+from base.location_utils import extract_district_from_address, find_county_code
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 
 def validate_type_ids(type_pid: int, type_cids: str) -> Tuple[bool, str]:
-    """验证类型ID是否存在"""
+    """
+    验证类型ID是否存在
+    
+    Args:
+        type_pid: 父类型ID
+        type_cids: 子类型ID（可以是逗号分隔的多个ID）
+        
+    Returns:
+        (是否有效, 错误信息)
+    """
     try:
         # 验证父ID
         pid_query = "SELECT id FROM tweets_type WHERE id = :pid"
@@ -85,36 +82,63 @@ def validate_type_ids(type_pid: int, type_cids: str) -> Tuple[bool, str]:
         return False, f"验证类型ID失败: {str(e)}"
 
 
-def load_csv(file_path: str) -> List[Dict]:
-    """从CSV文件加载数据"""
-    data = []
-    with open(file_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data.append(row)
-    return data
-
-
-def load_json(file_path: str) -> List[Dict]:
-    """从JSON文件加载数据"""
-    with open(file_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    if isinstance(data, dict):
-        # 如果JSON是对象，尝试找data字段
-        data = data.get('data', [data])
-    if not isinstance(data, list):
-        data = [data]
-    return data
-
-
-def load_excel(file_path: str) -> List[Dict]:
-    """从Excel文件加载数据"""
-    df = pd.read_excel(file_path)
-    return df.to_dict('records')
+def _remove_duplicate_city_in_address(address: str) -> str:
+    """
+    移除地址中重复的城市名称
+    
+    Args:
+        address: 原始地址
+        
+    Returns:
+        清理后的地址
+    """
+    if not address or not address.strip():
+        return address
+    
+    import re
+    
+    address = address.strip()
+    
+    # 常见城市列表（带"市"后缀）
+    cities_with_suffix = [
+        '北京市', '上海市', '广州市', '深圳市', '杭州市', '成都市', '南京市', 
+        '武汉市', '西安市', '重庆市', '苏州市', '天津市', '长沙市', '郑州市',
+        '青岛市', '大连市', '宁波市', '厦门市', '福州市', '合肥市', '昆明市',
+        '太原市', '石家庄市', '哈尔滨市', '长春市', '沈阳市', '济南市', '南昌市',
+        '南宁市', '海口市', '贵阳市', '拉萨市', '银川市', '乌鲁木齐市', '呼和浩特市'
+    ]
+    
+    # 检查是否有重复的城市名称
+    for city_with_suffix in cities_with_suffix:
+        # 检查是否出现重复（如"上海市上海市"）
+        pattern = f'({city_with_suffix})\\1'
+        if re.search(pattern, address):
+            # 替换为单个城市名
+            address = re.sub(pattern, r'\1', address)
+    
+    # 更通用的模式：检查连续重复的城市名（如"XX市XX市"）
+    pattern = r'([^省市区县]{2,4}市)\1'
+    matches = re.findall(pattern, address)
+    if matches:
+        for match in matches:
+            address = address.replace(match + match, match)
+    
+    return address.strip()
 
 
 def prepare_tweet_data(row: Dict) -> Dict:
-    """准备插入数据库的数据"""
+    """
+    准备插入数据库的数据
+    
+    Args:
+        row: 原始数据字典
+        
+    Returns:
+        处理后的推文数据字典
+        
+    Raises:
+        ValueError: 当必填字段缺失或格式错误时
+    """
     tweet = {}
     
     # 必填字段（NOT NULL）
@@ -151,6 +175,9 @@ def prepare_tweet_data(row: Dict) -> Dict:
     tweet['tweets_describe'] = str(row.get('tweets_describe') or row.get('describe') or row.get('description', '')).strip()
     if not tweet['tweets_describe']:
         raise ValueError("简介(tweets_describe)不能为空")
+    
+    # 清理地址中重复的城市名称（防止出现"上海市上海市"）
+    tweet['tweets_describe'] = _remove_duplicate_city_in_address(tweet['tweets_describe'])
     
     # 图片（必填）- 支持JSON数组格式或逗号分隔的URL
     img_raw = row.get('tweets_img') or row.get('image') or row.get('images') or row.get('img', '')
@@ -229,13 +256,24 @@ def prepare_tweet_data(row: Dict) -> Dict:
     if update_user:
         tweet['update_user'] = str(update_user).strip()[:10]
     
-    # 字段长度验证（集中验证）
-    if len(tweet['tweets_title']) > 120:
-        raise ValueError(f"标题长度超过120字符限制: {len(tweet['tweets_title'])}")
-    if len(tweet['tweets_describe']) > 400:
-        raise ValueError(f"简介长度超过400字符限制: {len(tweet['tweets_describe'])}")
-    if len(tweet['tweets_content']) > 2000:
-        raise ValueError(f"内容长度超过2000字符限制: {len(tweet['tweets_content'])}")
+    # 处理区代码：优先使用用户提供的值，否则自动提取
+    if row.get('tweets_location_code'):
+        # 如果用户明确提供了tweets_location_code，使用用户提供的值
+        tweet['tweets_location_code'] = str(row.get('tweets_location_code')).strip()[:20]
+    elif tweet.get('tweets_describe'):
+        # 否则自动提取区代码（如果地址存在）
+        try:
+            district = extract_district_from_address(tweet['tweets_describe'])
+            if district:
+                city_name = row.get('tweets_location') or tweet.get('tweets_location')
+                county_code = find_county_code(district, city_name)
+                if county_code:
+                    tweet['tweets_location_code'] = county_code
+                    logger.debug(f"自动提取区代码: {district} -> {county_code}")
+        except Exception as e:
+            logger.debug(f"提取区代码失败: {e}")
+    
+    # 字段长度验证（仅保留类型子ID的验证，标题和描述不再限制长度）
     if len(tweet['tweets_type_cid']) > 70:
         raise ValueError(f"类型子ID长度超过70字符限制: {len(tweet['tweets_type_cid'])}")
     
@@ -243,7 +281,15 @@ def prepare_tweet_data(row: Dict) -> Dict:
 
 
 def insert_tweet(tweet: Dict) -> Optional[int]:
-    """插入单条推文，返回插入的ID"""
+    """
+    插入单条推文，返回插入的ID
+    
+    Args:
+        tweet: 推文数据字典
+        
+    Returns:
+        插入的推文ID，失败返回None
+    """
     try:
         # 构建INSERT语句
         columns = []
@@ -279,7 +325,16 @@ def insert_tweet(tweet: Dict) -> Optional[int]:
 
 
 def batch_insert_tweets(tweets: List[Dict], batch_size: int = 100) -> Dict:
-    """批量插入推文"""
+    """
+    批量插入推文
+    
+    Args:
+        tweets: 推文数据列表
+        batch_size: 批次大小（未使用，保留用于未来优化）
+        
+    Returns:
+        插入结果统计字典
+    """
     total = len(tweets)
     success_count = 0
     fail_count = 0
@@ -315,81 +370,3 @@ def batch_insert_tweets(tweets: List[Dict], batch_size: int = 100) -> Dict:
         'inserted_ids': inserted_ids,
         'errors': errors
     }
-
-
-def main():
-    if len(sys.argv) < 2:
-        print("用法: python3 batch_upload_tweets.py <file_path> [--format csv|json|excel]")
-        sys.exit(1)
-    
-    file_path = sys.argv[1]
-    
-    # 检测文件格式
-    file_format = 'csv'
-    if '--format' in sys.argv:
-        idx = sys.argv.index('--format')
-        if idx + 1 < len(sys.argv):
-            file_format = sys.argv[idx + 1].lower()
-    else:
-        # 根据扩展名自动检测
-        ext = os.path.splitext(file_path)[1].lower()
-        if ext == '.json':
-            file_format = 'json'
-        elif ext in ['.xlsx', '.xls']:
-            file_format = 'excel'
-    
-    if not os.path.exists(file_path):
-        logger.error(f"文件不存在: {file_path}")
-        sys.exit(1)
-    
-    logger.info(f"读取文件: {file_path} (格式: {file_format})")
-    
-    try:
-        # 加载数据
-        if file_format == 'csv':
-            data = load_csv(file_path)
-        elif file_format == 'json':
-            data = load_json(file_path)
-        elif file_format == 'excel':
-            data = load_excel(file_path)
-        else:
-            logger.error(f"不支持的文件格式: {file_format}")
-            sys.exit(1)
-        
-        if not data:
-            logger.error("文件中没有数据")
-            sys.exit(1)
-        
-        logger.info(f"成功加载 {len(data)} 条记录")
-        
-        # 批量插入
-        result = batch_insert_tweets(data)
-        
-        # 输出结果
-        print("\n" + "="*50)
-        print("批量导入结果")
-        print("="*50)
-        print(f"总数: {result['total']}")
-        print(f"成功: {result['success']}")
-        print(f"失败: {result['failed']}")
-        
-        if result['inserted_ids']:
-            print(f"\n插入的ID范围: {min(result['inserted_ids'])} ~ {max(result['inserted_ids'])}")
-        
-        if result['errors']:
-            print(f"\n错误详情 (前10条):")
-            for error in result['errors'][:10]:
-                print(f"  - {error}")
-            if len(result['errors']) > 10:
-                print(f"  ... 还有 {len(result['errors']) - 10} 条错误")
-        
-        print("="*50)
-        
-    except Exception as e:
-        logger.error(f"批量导入失败: {str(e)}", exc_info=True)
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
-
