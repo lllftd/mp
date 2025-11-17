@@ -5,8 +5,9 @@
             <div class="bot-wrap">
                 <div class="info">
                     <div class="title">{{ activityDetail.actTitle }}</div>
-                    <!-- <div class="item local"><span class="key">活动地址：</span>{{
-                        activityDetail.actLocation.replace('/','-') }}</div> -->
+                    <div class="item local" v-if="activityDetail.actLocation">
+                        <span class="key">活动地区：</span>{{ formatLocation(activityDetail.actLocation) }}
+                    </div>
                     <div class="item time"><span class="key">参与时间：</span>{{ activityDetail.actStartDate }} - {{
                         activityDetail.actEndDate }}</div>
                     <div class="item desc"><span class="key">活动描述：</span>{{ activityDetail.actDescribe }}</div>
@@ -25,6 +26,20 @@ import { join_activity, get_user_activity_ids } from "@/api"
 
 const activityDetail = ref({});
 const isJoin = ref(false)
+
+// 格式化地理位置显示
+const formatLocation = (location) => {
+    if (!location) return '';
+    // 将"天津市/市辖区/河东区"格式化为"天津·河东区"
+    const parts = location.split('/').filter(part => part && part !== '市辖区');
+    if (parts.length > 0) {
+        // 移除"市"、"区"、"县"等后缀，只保留主要部分
+        const city = parts[0].replace('市', '');
+        const district = parts.length > 1 ? parts[parts.length - 1] : '';
+        return district ? `${city}·${district}` : city;
+    }
+    return location.replace(/\//g, '·');
+}
 
 const joinActivity = () => {
     join_activity({

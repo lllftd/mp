@@ -6,6 +6,20 @@ const searchList = ref([]);
 const keyword = ref("");
 const array = ['活动', '推文']
 const currentIndex = ref(0)
+
+// 格式化地理位置显示
+const formatLocation = (location) => {
+    if (!location) return '';
+    // 将"天津市/市辖区/河东区"格式化为"天津·河东区"
+    const parts = location.split('/').filter(part => part && part !== '市辖区');
+    if (parts.length > 0) {
+        // 移除"市"、"区"、"县"等后缀，只保留主要部分
+        const city = parts[0].replace('市', '');
+        const district = parts.length > 1 ? parts[parts.length - 1] : '';
+        return district ? `${city}·${district}` : city;
+    }
+    return location.replace(/\//g, '·');
+}
 const avatars = [
   "https://js.njhanqian.tech/share/1ce63172c35747769753838278643718.jpg", // 狗
   "https://js.njhanqian.tech/share/5133c13c30414529b4277f9cf31c1e9b.jpg", // 狗2
@@ -190,9 +204,15 @@ onReachBottom(() => {
                 <div class="title">{{ item.actTitle }}</div>
                 <div class="desc">{{ item.actDescribe }}</div>
               </div>
-              <div class="time flex flex-y-center">
-                <img class="time-icon" src="../../static/images/svgIcon/time.svg" alt="">
-                {{ item.actStartDate }} - {{ item.actEndDate }}
+              <div class="meta-info">
+                <div class="location flex flex-y-center" v-if="item.actLocation">
+                  <img class="location-icon" src="../../static/images/svgIcon/ip.svg" alt="">
+                  {{ formatLocation(item.actLocation) }}
+                </div>
+                <div class="time flex flex-y-center">
+                  <img class="time-icon" src="../../static/images/svgIcon/time.svg" alt="">
+                  {{ item.actStartDate }} - {{ item.actEndDate }}
+                </div>
               </div>
             </div>
           </div>
@@ -415,6 +435,24 @@ onReachBottom(() => {
         .desc {
           font-size: 24rpx;
           color: rgba(0, 0, 0, 0.47);
+        }
+
+        .meta-info {
+          display: flex;
+          flex-direction: column;
+          gap: 8rpx;
+          margin-top: 12rpx;
+        }
+
+        .location {
+          .location-icon {
+            width: 28rpx;
+            height: 28rpx;
+            margin-right: 10rpx;
+          }
+
+          font-size: 24rpx;
+          color: #6F6F6F;
         }
 
         .time {

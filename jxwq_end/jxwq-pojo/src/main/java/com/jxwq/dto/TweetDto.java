@@ -33,7 +33,6 @@ public class TweetDto implements Serializable {
      * 推文标题
      */
     @NotEmpty(message = "推文标题不能为空")
-    @Length(max = 15, message = "推文标题长度不能超过 15 位")
     @ApiModelProperty("推文标题")
     private String tweetsTitle;
 
@@ -46,7 +45,6 @@ public class TweetDto implements Serializable {
      * 推文简介
      */
     @NotEmpty(message = "推文简介不能为空")
-    @Length(max = 300, message = "推文简介长度不能超过 300 字")
     @ApiModelProperty("推文简介")
     private String tweetsDescribe;
 
