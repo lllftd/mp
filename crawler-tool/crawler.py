@@ -687,6 +687,166 @@ def crawl_xiaohongshu(keyword: str, pages: int = 5, headless: bool = False) -> L
         return []
 
 
+def process_restaurant(restaurant_data: Dict, city: str = "上海") -> Dict:
+    """
+    处理一条 Trip.com 餐厅数据，完整流程：转述内容及评论 → 上传数据库
+    
+    Args:
+        restaurant_data: 餐厅数据字典，包含 name, address, rating, price_range, cuisine, images, description 等
+        city: 城市名称（用于地址搜索）
+        
+    Returns:
+        处理结果统计字典
+    """
+    ai_paraphraser = get_ai_paraphraser()
+    address_service = AddressService()
+    
+    stats = {
+        'total_restaurants': 1,
+        'success': 0,
+        'failed': 0,
+        'comments_generated': 0,
+        'errors': []
+    }
+    
+    try:
+        restaurant_name = restaurant_data.get('name', '未知')
+        logger.info(f"开始处理餐厅: {restaurant_name}")
+        
+        # 如果已有地址，使用已有地址；否则使用高德API搜索
+        address = restaurant_data.get('address', '')
+        if not address:
+            logger.info(f"  使用高德API搜索餐厅地址: {restaurant_name}")
+            address_result = address_service.search_restaurant_address(restaurant_name, city)
+            
+            if address_result and address_result.get('address'):
+                address = address_result['address']
+                city_name = address_result.get('city', city)
+                if city_name and city_name.endswith('市'):
+                    city_name = city_name[:-1]
+                restaurant_data['city'] = city_name
+                restaurant_data['district'] = address_result.get('district', '')
+                restaurant_data['adcode'] = address_result.get('adcode', '')
+                restaurant_data['province'] = address_result.get('province', '')
+                logger.info(f"  ✅ 高德API返回地址: {address}")
+            else:
+                logger.warning(f"  ⚠️  高德API未找到地址")
+                stats['failed'] += 1
+                stats['errors'].append(f"{restaurant_name}: 高德API未找到地址")
+                return stats
+        else:
+            # 使用已有地址，尝试从地址中提取城市
+            from base.location_utils import extract_city_from_address
+            extracted_city = extract_city_from_address(address)
+            if extracted_city:
+                restaurant_data['city'] = extracted_city
+            else:
+                restaurant_data['city'] = city
+        
+        # 构建餐厅信息
+        restaurant_info = {
+            'name': restaurant_name,
+            'address': address,
+            'city': restaurant_data.get('city', city),
+            'district': restaurant_data.get('district', ''),
+            'adcode': restaurant_data.get('adcode', ''),
+            'province': restaurant_data.get('province', ''),
+            'rating': restaurant_data.get('rating'),
+            'price_range': restaurant_data.get('price_range'),
+            'cuisine': restaurant_data.get('cuisine')
+        }
+        
+        # 构建描述文本（用于AI转述）
+        description_parts = []
+        if restaurant_data.get('description'):
+            description_parts.append(restaurant_data['description'])
+        if restaurant_data.get('rating'):
+            description_parts.append(f"评分: {restaurant_data['rating']}")
+        if restaurant_data.get('price_range'):
+            description_parts.append(f"价格: {restaurant_data['price_range']}")
+        if restaurant_data.get('cuisine'):
+            description_parts.append(f"菜系: {restaurant_data['cuisine']}")
+        if restaurant_data.get('review_count'):
+            description_parts.append(f"评价数: {restaurant_data['review_count']}")
+        
+        description = ' | '.join(description_parts) if description_parts else f"这是一家位于{address}的餐厅"
+        
+        # AI转述内容并生成评论
+        logger.info(f"  步骤1: AI转述内容并生成评论...")
+        paraphrased_title, paraphrased_desc, type_cid, comments = ai_paraphraser.paraphrase_restaurant(
+            restaurant_info=restaurant_info,
+            original_title=restaurant_name,
+            original_description=description,
+            tweet_id=None,
+            auto_generate_comments=True
+        )
+        
+        if not paraphrased_title or not paraphrased_desc or not type_cid:
+            logger.error(f"  ❌ AI转述失败")
+            stats['failed'] += 1
+            stats['errors'].append(f"{restaurant_name}: 转述失败")
+            return stats
+        
+        logger.info(f"  ✅ AI转述成功")
+        logger.info(f"    转述标题: {paraphrased_title[:50]}...")
+        logger.info(f"    转述描述: {paraphrased_desc[:100]}...")
+        logger.info(f"    类型ID: {type_cid}")
+        logger.info(f"    生成评论数: {len(comments)} 条")
+        stats['comments_generated'] += len(comments)
+        
+        # 准备推文数据
+        images = restaurant_data.get('images', [])
+        tweet_data = {
+            'tweets_title': restaurant_name,
+            'tweets_content': paraphrased_desc,
+            'tweets_describe': address,
+            'tweets_img': images,
+            'tweets_type_pid': 5,  # 美食类型
+            'tweets_type_cid': type_cid,
+            'tweets_user': get_random_username(),
+            'tweets_location': restaurant_info['city'],
+            'tweets_location_code': restaurant_info.get('adcode', ''),
+            'like_num': random.randint(10, 500),
+            'collect_num': random.randint(5, 100),
+            'browse_num': random.randint(50, 2000)
+        }
+        
+        # 验证并准备数据
+        try:
+            prepared_data = prepare_tweet_data(tweet_data)
+        except ValueError as e:
+            logger.error(f"  ❌ 数据验证失败: {e}")
+            stats['failed'] += 1
+            stats['errors'].append(f"{restaurant_name}: {str(e)}")
+            return stats
+        
+        # 插入推文到数据库
+        logger.info(f"  插入推文到数据库...")
+        tweet_id = insert_tweet(prepared_data)
+        
+        if tweet_id:
+            logger.info(f"  ✅ 推文插入成功，ID: {tweet_id}")
+            
+            # 插入评论到数据库
+            if comments:
+                inserted_count = ai_paraphraser.insert_comments_to_db(tweet_id, comments)
+                logger.info(f"  ✅ 评论插入成功: {inserted_count}/{len(comments)} 条")
+            
+            stats['success'] += 1
+        else:
+            logger.error(f"  ❌ 推文插入失败")
+            stats['failed'] += 1
+            stats['errors'].append(f"{restaurant_name}: 推文插入失败")
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"处理餐厅失败: {e}", exc_info=True)
+        stats['errors'].append(f"处理餐厅失败: {str(e)}")
+        stats['failed'] += 1
+        return stats
+
+
 def process_note(title: str, description: str, city: str = "上海", images: List[str] = None) -> Dict:
     """
     处理一条小红书笔记，完整流程：提取餐厅 → 转述内容及评论 → 上传数据库
@@ -844,6 +1004,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
+  # Trip.com 爬虫模式
+  python3 crawler.py --crawl-trip --trip-url "https://hk.trip.com/restaurant/shanghai-2/" --city 上海
+  python3 crawler.py --crawl-trip --trip-url "https://hk.trip.com/restaurant/shanghai-2/" --city 上海 --trip-max 10
+  
   # 小红书爬虫模式（推荐）
   python3 crawler.py --crawl --keyword "上海美食" --city 上海 --pages 5
   python3 crawler.py --crawl --keyword "北京美食" --city 北京 --pages 3 --limit 10
@@ -881,6 +1045,12 @@ def main():
     parser.add_argument('--pages', type=int, default=5, help='爬取页数（默认：5）')
     parser.add_argument('--headless', action='store_true', help='无头模式（不显示浏览器窗口）')
     
+    # Trip.com 爬虫参数
+    parser.add_argument('--crawl-trip', action='store_true', help='启用 Trip.com 爬虫模式')
+    parser.add_argument('--trip-url', type=str, help='Trip.com 餐厅列表页面URL（如：https://hk.trip.com/restaurant/shanghai-2/）')
+    parser.add_argument('--trip-pages', type=int, default=1, help='Trip.com 爬取页数（默认：1）')
+    parser.add_argument('--trip-max', type=int, help='Trip.com 最大爬取餐厅数量')
+    
     args = parser.parse_args()
     
     # 处理位置参数和命名参数的优先级
@@ -901,7 +1071,52 @@ def main():
         memory_monitor = MemoryMonitor()
         memory_monitor.start_monitoring()
         
-        if args.crawl:
+        if args.crawl_trip:
+            # Trip.com 爬虫模式
+            if not args.trip_url:
+                logger.error("Trip.com 爬虫模式需要指定 --trip-url 参数")
+                parser.print_help()
+                sys.exit(1)
+            
+            logger.info("Trip.com 爬虫模式")
+            
+            # 导入 Trip.com 爬虫
+            from app.scripts.crawl_trip_com import crawl_trip_com_restaurants
+            
+            # 爬取餐厅列表
+            logger.info("开始爬取 Trip.com 餐厅...")
+            restaurants = crawl_trip_com_restaurants(
+                url=args.trip_url,
+                pages=args.trip_pages,
+                headless=args.headless,
+                max_restaurants=args.trip_max or args.limit
+            )
+            
+            if not restaurants:
+                logger.warning("未爬取到任何餐厅")
+                sys.exit(1)
+            
+            logger.info(f"成功爬取 {len(restaurants)} 个餐厅，开始处理...")
+            
+            # 处理每个餐厅
+            for idx, restaurant in enumerate(restaurants, 1):
+                logger.info(f"\n处理餐厅 {idx}/{len(restaurants)}: {restaurant.get('name', '未知')}")
+                
+                # 限制处理数量
+                if args.limit and idx > args.limit:
+                    break
+                
+                # 处理餐厅（转述、上传）
+                stats = process_restaurant(restaurant, city=args.city)
+                
+                total_stats['total_notes'] += 1
+                total_stats['total_restaurants'] += stats['total_restaurants']
+                total_stats['total_success'] += stats['success']
+                total_stats['total_failed'] += stats['failed']
+                total_stats['total_comments'] += stats['comments_generated']
+                total_stats['all_errors'].extend(stats['errors'])
+        
+        elif args.crawl:
             # 小红书爬虫模式
             if not args.keyword:
                 logger.error("爬虫模式需要指定 --keyword 参数")
