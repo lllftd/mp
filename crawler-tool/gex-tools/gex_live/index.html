@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GEX Live</title>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#0f1a2b;
+      --panel2:#0c1626;
+      --text:#e7edf6;
+      --muted:#9fb0c6;
+      --green:#2ecc71;
+      --red:#ff3b30;
+      --yellow:#f1c40f;
+      --border:rgba(255,255,255,0.08);
+    }
+    html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;}
+    .wrap{display:flex; gap:16px; height:100vh; box-sizing:border-box; padding:16px;}
+    .main{flex: 1 1 auto; background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.00)); border:1px solid var(--border); border-radius:10px; padding:12px;}
+    .side{width:360px; min-width:320px; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:14px;}
+    .row{display:flex; gap:10px; align-items:center;}
+    .title{font-weight:700; letter-spacing:0.3px;}
+    .box{background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:12px;}
+    .label{color:var(--muted); font-size:12px; margin-bottom:6px;}
+    select,button,input[type=range]{background:rgba(255,255,255,0.05); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
+    button{cursor:pointer;}
+    .btns{display:flex; gap:10px;}
+    .btn{flex:1; text-align:center; font-weight:600;}
+    .btn.active{background:rgba(56,139,253,0.85); border-color:rgba(56,139,253,0.9);}
+    .metric{display:flex; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px dashed rgba(255,255,255,0.07);}
+    .metric:last-child{border-bottom:none;}
+    .k{color:var(--muted);}
+    .v{font-variant-numeric: tabular-nums;}
+    .v.green{color:var(--green);}
+    .v.red{color:var(--red);}
+    .v.yellow{color:var(--yellow);}
+    #chart{height: calc(100vh - 60px); }
+    .small{font-size:12px; color:var(--muted);}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="main">
+      <div id="chart"></div>
+    </div>
+    <div class="side">
+      <div class="box">
+        <div class="label">Stock</div>
+        <div class="row">
+          <select id="stockSelect" style="flex:1"></select>
+        </div>
+        <div class="btns" style="margin-top:10px;">
+          <button class="btn active" id="btn0dte">0DTE</button>
+          <button class="btn" id="btnNext">NEXT</button>
+          <button class="btn" id="btn90d">90D</button>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="title">Update</div>
+        <div class="metric"><div class="k">Time</div><div class="v" id="mTime"></div></div>
+        <div class="metric"><div class="k">Spot</div><div class="v" id="mSpot"></div></div>
+      </div>
+
+      <div class="box">
+        <div class="title">Open Interest</div>
+        <div class="metric"><div class="k">Zero Gamma</div><div class="v yellow" id="oiZero"></div></div>
+        <div class="metric"><div class="k">Major Positive</div><div class="v green" id="oiPos"></div></div>
+        <div class="metric"><div class="k">Major Negative</div><div class="v red" id="oiNeg"></div></div>
+        <div class="metric"><div class="k">Net GEX</div><div class="v" id="oiNet"></div></div>
+      </div>
+
+      <div class="box">
+        <div class="title">Scale</div>
+        <div class="row">
+          <input id="scale" type="range" min="0.2" max="3" step="0.1" value="1" style="flex:1" />
+          <div class="small" style="width:52px; text-align:right;"><span id="scaleVal">1.0</span>x</div>
+        </div>
+        <div class="small" style="margin-top:8px;">Sign model: <span id="signModel"></span></div>
+      </div>
+      <div class="small">Auto-refresh: 1s</div>
+    </div>
+  </div>
+
+  <script>
+    let DATA = null;
+    let currentWin = "0DTE";
+
+    function fmt(x){
+      if (x === null || x === undefined || Number.isNaN(x)) return "-";
+      if (Math.abs(x) >= 1000) return x.toFixed(1);
+      return x.toFixed(2);
+    }
+    function setActive(btnId){
+      ["btn0dte","btnNext","btn90d"].forEach(id=>{
+        document.getElementById(id).classList.toggle("active", id === btnId);
+      });
+    }
+
+    function buildBars(series, scale){
+      const strikes = series.strike;
+      const gex = series.gex.map(v => v * scale);
+      const pos = gex.map(v => Math.max(0, v));
+      const neg = gex.map(v => Math.min(0, v));
+      return {strikes, pos, neg, gex};
+    }
+
+    function render(){
+      if (!DATA) return;
+      const stockKey = document.getElementById("stockSelect").value;
+      const stock = DATA.stocks[stockKey];
+      const win = stock.windows[currentWin];
+      const scale = parseFloat(document.getElementById("scale").value || "1");
+      document.getElementById("scaleVal").innerText = scale.toFixed(1);
+
+      document.getElementById("mTime").innerText = stock.time;
+      document.getElementById("mSpot").innerText = fmt(stock.spot);
+      document.getElementById("signModel").innerText = stock.sign_model;
+
+      document.getElementById("oiZero").innerText = fmt(win.metrics.oi.zero_gamma);
+      document.getElementById("oiPos").innerText = fmt(win.metrics.oi.major_positive);
+      document.getElementById("oiNeg").innerText = fmt(win.metrics.oi.major_negative);
+      document.getElementById("oiNet").innerText = fmt(win.metrics.oi.net_gex);
+      document.getElementById("oiNet").className = "v " + (win.metrics.oi.net_gex >= 0 ? "green" : "red");
+
+      const bars = buildBars(win.metrics.oi.series, scale);
+      const traceNeg = {type:"bar", orientation:"h", y:bars.strikes, x:bars.neg, marker:{color:"#ff3b30"}, hovertemplate:"strike=%{y}<br>gex=%{x:.2f}<extra></extra>"};
+      const tracePos = {type:"bar", orientation:"h", y:bars.strikes, x:bars.pos, marker:{color:"#2ecc71"}, hovertemplate:"strike=%{y}<br>gex=%{x:.2f}<extra></extra>"};
+      const layout = {
+        paper_bgcolor:"rgba(0,0,0,0)",
+        plot_bgcolor:"rgba(0,0,0,0)",
+        barmode:"overlay",
+        margin:{l:60,r:10,t:10,b:40},
+        xaxis:{zeroline:true, zerolinecolor:"rgba(255,255,255,0.25)", gridcolor:"rgba(255,255,255,0.10)", tickfont:{color:"rgba(255,255,255,0.70)"}},
+        yaxis:{gridcolor:"rgba(255,255,255,0.06)", tickfont:{color:"rgba(255,255,255,0.70)"}},
+        showlegend:false
+      };
+      Plotly.react("chart", [traceNeg, tracePos], layout, {displayModeBar:false, responsive:true});
+    }
+
+    async function refresh(){
+      try{
+        const res = await fetch("/data.json?ts=" + Date.now(), {cache:"no-store"});
+        DATA = await res.json();
+        const sel = document.getElementById("stockSelect");
+        if (sel.options.length === 0){
+          Object.keys(DATA.stocks).forEach(k=>{
+            const opt = document.createElement("option");
+            opt.value = k; opt.textContent = k;
+            sel.appendChild(opt);
+          });
+          sel.value = DATA.default_stock || Object.keys(DATA.stocks)[0];
+        }
+        render();
+      }catch(e){
+        // ignore transient errors while backend starts
+      }
+    }
+
+    document.getElementById("btn0dte").onclick = ()=>{ currentWin="0DTE"; setActive("btn0dte"); render(); };
+    document.getElementById("btnNext").onclick = ()=>{ currentWin="NEXT"; setActive("btnNext"); render(); };
+    document.getElementById("btn90d").onclick = ()=>{ currentWin="90D"; setActive("btn90d"); render(); };
+    document.getElementById("stockSelect").onchange = render;
+    document.getElementById("scale").oninput = render;
+
+    refresh();
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>
+
+
