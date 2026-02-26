@@ -22,7 +22,7 @@ def shorten_url(url: str) -> str:
         return url
 
 
-def prepare_image_json(image_urls: List[str], max_length: int = 300) -> tuple[str, List[str]]:
+def prepare_image_json(image_urls: List[str], max_length: int = 20000) -> tuple[str, List[str]]:
     """
     准备图片JSON字符串，确保不超过长度限制
     
@@ -68,14 +68,14 @@ def prepare_image_json(image_urls: List[str], max_length: int = 300) -> tuple[st
     return img_json, final_urls
 
 
-def update_restaurant_images(tweet_id: int, image_urls: List[str], max_length: int = 300) -> bool:
+def update_restaurant_images(tweet_id: int, image_urls: List[str], max_length: int = 20000) -> bool:
     """
     更新餐厅图片到数据库
     
     Args:
         tweet_id: 推文ID
         image_urls: 图片URL列表
-        max_length: 字段最大长度（默认300）
+        max_length: 字段最大长度（默认20000；若数据库字段为 longtext 可支持更长）
         
     Returns:
         是否成功

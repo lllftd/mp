@@ -57,16 +57,17 @@ def process_note(title: str, description: str, city: str = "上海", images: Lis
     try:
         logger.info(f"开始处理笔记: {title[:50]}...")
         
-        logger.info("步骤1: AI提取餐厅信息...")
+        logger.info("步骤1: AI提取场所信息...")
         restaurants = ai_paraphraser.extract_restaurants(title, description)
         
         if not restaurants:
             logger.warning("⚠️  未提取到餐厅信息，跳过该笔记")
+            logger.warning(f"   提示：如果笔记包含多家餐厅，请检查AI是否完整提取了所有餐厅")
             stats['errors'].append("未提取到餐厅信息")
             return stats
         
         stats['total_restaurants'] = len(restaurants)
-        logger.info(f"✅ 成功提取到 {len(restaurants)} 个餐厅")
+        logger.info(f"✅ 成功提取到 {len(restaurants)} 个餐厅，将逐个处理并上传")
         
         # 步骤2：对每个餐厅进行处理
         for idx, restaurant in enumerate(restaurants, 1):
@@ -117,12 +118,15 @@ def process_note(title: str, description: str, city: str = "上海", images: Lis
                 stats['comments_generated'] += len(comments)
                 
                 # 2.3 准备推文数据
+                # 根据场所类型动态选择父类型ID
+                type_pid = ai_paraphraser.get_parent_type_id(restaurant)
+                
                 tweet_data = {
                     'tweets_title': restaurant_name,  # 不再限制长度
                     'tweets_content': paraphrased_desc,  # 不再限制长度
                     'tweets_describe': restaurant['address'],  # 不再限制长度
                     'tweets_img': images or [],
-                    'tweets_type_pid': 5,
+                    'tweets_type_pid': type_pid,  # 动态选择父类型ID
                     'tweets_type_cid': type_cid,
                     'tweets_user': get_random_username(),
                     'tweets_location': restaurant['city'],

@@ -82,15 +82,21 @@ class Config:
     DEFAULT_TYPE_CID = os.getenv('DEFAULT_TYPE_CID')  # 默认子类型ID（必须配置）
     DEFAULT_USER = os.getenv('DEFAULT_USER')  # 默认用户名（可选，实际使用随机生成）
 
-    # AI转述配置（使用Ollama）
-    LLM_API_BASE = os.getenv('LLM_API_BASE', 'http://localhost:11434/v1')
-    LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek-r1:7b')  # 使用deepseek-r1:7b模型（推荐），内存需求约4-8GB
+    # AI转述配置（使用Ollama或DeepSeek API）
+    LLM_API_BASE = os.getenv('LLM_API_BASE', 'https://api.deepseek.com')
+    LLM_API_KEY = os.getenv('LLM_API_KEY', 'sk-50f2481cc6474c15b15e0f27a7384246')
+    LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek-chat')
     # 可选模型：
-    # - deepseek-r1:7b (推荐，内存需求约4-8GB，质量与速度平衡)
+    # - deepseek-r1:7b (内存需求约4-8GB，质量与速度平衡)
     # - deepseek-r1:14b (内存需求约8-16GB，质量更高，需要更多内存)
-    # - deepseek-r1:32b (高质量，内存需求约32GB+)
+    # - deepseek-r1:32b (推荐，最高质量，内存需求约32GB+)
     LLM_MAX_TOKENS = int(os.getenv('LLM_MAX_TOKENS', 500))
     LLM_TEMPERATURE = float(os.getenv('LLM_TEMPERATURE', 0.7))  # 创造性参数（0-1）
+
+    # Trip.com 内容改写配置
+    # - TRIPCOM_AI_REWRITE=true: Trip.com 餐厅入库前，基于 Trip.com 评分/评价做小红书风格改写
+    # - 关闭后：沿用原逻辑（直接拼接描述+评论）
+    TRIPCOM_AI_REWRITE = os.getenv('TRIPCOM_AI_REWRITE', 'true').lower() == 'true'
     
     # 图片处理配置
     REMOVE_WATERMARK = os.getenv('REMOVE_WATERMARK', 'true').lower() == 'true'  # 是否去除水印
@@ -105,6 +111,7 @@ class Config:
 
     # 请求控制
     MAX_RETRIES = int(os.getenv('MAX_RETRIES', 3))  # 最大重试次数
+    MAX_API_RETRIES = int(os.getenv('MAX_API_RETRIES', 5))  # API监听最大重试次数（避免无限重试，减少到5次）
     REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT', 60))  # 请求超时时间（增加到60秒）
     BATCH_SIZE = int(os.getenv('BATCH_SIZE', 3))  # 每批处理的数据量
     MIN_REQUEST_INTERVAL = int(os.getenv('MIN_REQUEST_INTERVAL', 5))  # 请求间最小间隔（秒）

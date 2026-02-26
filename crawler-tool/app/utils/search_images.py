@@ -348,12 +348,48 @@ class BingImageSearcher:
         # 检查URL中是否包含无效模式
         invalid_patterns = [
             'logo', 'avatar', 'icon', 'placeholder', 'data:image',
-            '&quot;', '&amp;', '","', '":'
+            '&quot;', '&amp;', '","', '":', 'headphoto', 'user',
+            '0102c120008jgkcxjB98F',  # Trip.com 通用占位图
+            # Trip.com banner/marketing assets（常见带品牌logo/文案，非餐厅实拍图）
+            '/images/fd/tg/',
+            # Trip.com 通用占位图（实测在库中出现）
+            '05e2j12000cjsihpq0418',
+            '05e5k12000cjsg4e48d91',
+            '05e2z12000cjsfsqb7a2b',
+            '05e5112000f3br0wz5303',
+            '05E6e12000cjso3ro7BEE',
+            '05E4f12000cjsls8g082A',
+            '0M74z2224tibbx728D6EF',
+            # 实测：翠湖广东乡下菜命中的banner（包含logo/文案）
+            'cghzgvw7usiazm7daaa0kqyhcl8653',
+            'huitu.com',  # Stock photos
+            'nipic.com',  # Stock photos
+            'nximg.cn',   # Nipic image server
+            'pconline.com.cn', # Often unrelated blog images
+            'ytimg.com',  # YouTube thumbnails
+            'youtube.com', # YouTube
+            'mc.yandex.ru', # Yandex tracking pixel
+            '1mi2r12000j159k505CB1', # Trip.com user level badge (lv9)
+            'CghzgVW7USqAL6kEAABDYVl5N3Y173', # Pizza Hut logo / Banner
+            '0100d12000953lfww79B3',
+            '10071a0000019stakE862',
+            '100w0k000000cp3cm1818',
+            'CggYHlX08oOAFufEAAF3YzRdmmg013' # Lao Da Chang incorrect image
         ]
         url_lower = url.lower()
         for pattern in invalid_patterns:
             if pattern in url_lower:
                 return False
+        
+        # 检查是否包含尺寸限制（排除小图，如 _C_30_30_）
+        size_match = re.search(r'_[CR]_(\d+)_(\d+)', url)
+        if size_match:
+            try:
+                w, h = int(size_match.group(1)), int(size_match.group(2))
+                if w < 100 or h < 100:  # 排除小于 100x100 的图片
+                    return False
+            except:
+                pass
         
         # 尝试访问URL验证
         try:
@@ -412,11 +448,16 @@ class BingImageSearcher:
     def search_images(self, restaurant_name: str, restaurant_desc: str = "", 
                      city: str = "上海", max_images: int = 3) -> List[str]:
         """搜索餐厅图片"""
-        query = restaurant_name
-        if city:
-            query = f"{restaurant_name} {city}"
-        query = f"{query} 美食 食物 菜品"
-        return self.search_images_bing_browser(query, max_images)
+        # 使用更通用的搜索词，不限制在 Trip.com
+        query = f"{restaurant_name} {city} 美食"
+        if "店" not in restaurant_name and "馆" not in restaurant_name and "餐厅" not in restaurant_name:
+             query = f"{restaurant_name} 餐厅 {city} 美食"
+            
+        # 移除 site:trip.com 限制，增加排除词
+        # query = f"site:trip.com {query} 美食"
+        
+        # 优先使用Web搜索，避免浏览器环境问题
+        return self.search_images_bing_web(query, max_images)
 
 
 class AmapImageSearcher:

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # 爬虫工具统一启动脚本
-# 支持独立运行各个模块，也可以组合运行
+
+# 修复中文输出乱码（提前设置编码）
+export PYTHONIOENCODING="utf-8"
+export LANG="zh_CN.UTF-8"
+export LC_ALL="zh_CN.UTF-8"
 
 cd "$(dirname "$0")"
 

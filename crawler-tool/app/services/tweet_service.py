@@ -184,22 +184,36 @@ def prepare_tweet_data(row: Dict) -> Dict:
     if not img_raw:
         raise ValueError("图片(tweets_img)不能为空")
     
-    img_str = str(img_raw).strip()
     img_list = []
     
-    # 如果已经是JSON数组格式，直接使用；否则转换为JSON数组
-    if img_str.startswith('[') and img_str.endswith(']'):
-        try:
-            # 验证是否为有效JSON
-            img_list = json.loads(img_str)
-            if not isinstance(img_list, list):
-                img_list = [img_list]
-        except json.JSONDecodeError:
-            # 如果不是有效JSON，按逗号分隔处理
-            img_list = [url.strip() for url in img_str.strip('[]').split(',') if url.strip()]
+    # 如果已经是列表类型，直接使用
+    if isinstance(img_raw, list):
+        img_list = img_raw
     else:
-        # 逗号分隔的URL列表，转换为JSON数组
-        img_list = [url.strip() for url in img_str.split(',') if url.strip()]
+        img_str = str(img_raw).strip()
+        
+        # 如果已经是JSON数组格式，直接使用；否则转换为JSON数组
+        if img_str.startswith('[') and img_str.endswith(']'):
+            try:
+                # 验证是否为有效JSON
+                img_list = json.loads(img_str)
+                if not isinstance(img_list, list):
+                    img_list = [img_list]
+            except json.JSONDecodeError:
+                # 如果不是有效JSON，可能是Python列表的字符串表示（单引号），尝试用ast.literal_eval或手动解析
+                try:
+                    import ast
+                    parsed = ast.literal_eval(img_str)
+                    if isinstance(parsed, list):
+                        img_list = parsed
+                    else:
+                        img_list = [str(parsed)]
+                except:
+                    # 最后的兜底：按逗号分隔处理
+                    img_list = [url.strip().strip("'").strip('"') for url in img_str.strip('[]').split(',') if url.strip()]
+        else:
+            # 逗号分隔的URL列表，转换为JSON数组
+            img_list = [url.strip() for url in img_str.split(',') if url.strip()]
     
     if not img_list:
         raise ValueError("图片(tweets_img)不能为空")

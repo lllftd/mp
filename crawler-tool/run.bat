@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 REM 爬虫工具启动脚本 - 完整流程：爬虫提取 → AI转述内容及评论 → 上传数据库
 
 cd /d "%~dp0"
@@ -39,7 +40,7 @@ if "%~1"=="" (
     echo 用法: run.bat [选项]
     echo.
     echo 完整流程模式（推荐）:
-    echo   run.bat --title "笔记标题" --description "笔记描述" --city 上海
+    echo   run.bat --title "笔记标题" --description "笔记描述" --city 上海 --page 5
     echo   run.bat --file notes.json --city 上海
     echo.
     echo 其他工具:
@@ -47,10 +48,17 @@ if "%~1"=="" (
     echo   生成评论:      python app\generate_comments.py --limit 50
     echo   搜索图片:      python app\search_images.py --method bing --city 上海 --limit 10
     echo.
+    echo 任务队列模式（依次执行多个任务）:
+echo   python app\tools\task_queue.py --file tasks_all_cities.json
+echo   爬取全国所有省会城市和直辖市的美食（每个城市5页）
+echo   python crawler.py --tasks-file tasks_all_cities.json --headless
+echo   在单个浏览器会话中依次执行所有城市（推荐）
+    echo.
     echo 示例：
     echo   run.bat --title "上海美食推荐" --description "今天去了xxx餐厅..." --city 上海
     echo   run.bat --file notes.json --city 上海 --limit 10
     echo   python app\search_images.py --method bing --city 上海 --limit 10
+    echo   python app\tools\task_queue.py --file tasks.json
     echo.
     exit /b 0
 )

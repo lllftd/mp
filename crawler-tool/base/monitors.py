@@ -33,8 +33,9 @@ class MemoryMonitor:
         self.check_interval = 30
         
         if '32b' in Config.LLM_MODEL.lower():
-            self.warning_threshold = 20.0 * 1024 * 1024 * 1024
-            self.critical_threshold = 10.0 * 1024 * 1024 * 1024
+            # 32B 模型需要更充足的可用内存
+            self.warning_threshold = 24.0 * 1024 * 1024 * 1024
+            self.critical_threshold = 15.0 * 1024 * 1024 * 1024
         else:
             self.warning_threshold = warning_threshold_gb * 1024 * 1024 * 1024
             self.critical_threshold = critical_threshold_gb * 1024 * 1024 * 1024

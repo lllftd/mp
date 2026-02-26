@@ -36,15 +36,15 @@ class AddressService:
         self.amap_api_enabled = bool(self.amap_api_key)
         
         if not self.amap_api_enabled:
-            logger.warning("⚠️  未配置高德地图API密钥，将只能使用AI提取方式")
+            logger.warning("[!] 未配置高德地图API密钥，将只能使用AI提取方式")
     
-    def search_restaurant_address(self, restaurant_name: str, city: str = "上海") -> Optional[Dict]:
+    def search_restaurant_address(self, restaurant_name: str, city: str = None) -> Optional[Dict]:
         """
         搜索餐厅地址（使用高德地图API）
         
         Args:
             restaurant_name: 餐厅名称
-            city: 城市名称（必需，用于限制搜索范围）
+            city: 城市名称（可选，如果为空则全国搜索）
             
         Returns:
             餐厅信息字典，包含 name, address, city, location(lng, lat) 等
@@ -56,11 +56,72 @@ class AddressService:
         if self.amap_api_enabled:
             result = self._search_amap_api(restaurant_name, city)
             if result and result.get('address'):
-                logger.info(f"✅ 通过高德地图API获取到地址: {result.get('address')}")
+                logger.info(f"[OK] 通过高德地图API获取到地址: {result.get('address')}")
                 return result
         
-        # 如果API未配置或失败，返回None（调用方可以使用AI方式）
-        logger.debug(f"高德地图API未返回结果，餐厅: {restaurant_name}")
+        # 如果API未配置或失败，或者未找到地址，尝试使用本地映射或AI提取
+        if not result:
+            logger.debug(f"高德地图API未返回结果，餐厅: {restaurant_name}")
+            
+            # 尝试从现有地址或AI提取的地址中查找地区编码（如果API失败）
+            # 注意：这里我们假设调用方可能已经有了一些地址信息，或者我们可以再次尝试从数据库中的地址提取
+            
+            return None
+        return None
+
+    def geocode_address(self, address: str, city: str = None) -> Optional[Dict]:
+        """
+        使用高德地图地理编码API将地址转换为坐标和结构化地址
+        
+        Args:
+            address: 详细地址
+            city: 城市名称（可选，限制搜索范围）
+            
+        Returns:
+            地址信息字典，包含 formatted_address, province, city, district, adcode, location
+        """
+        if not address or not address.strip():
+            return None
+            
+        if not self.amap_api_enabled:
+            return None
+            
+        try:
+            url = "https://restapi.amap.com/v3/geocode/geo"
+            params = {
+                'key': self.amap_api_key,
+                'address': address,
+                'output': 'json'
+            }
+            if city:
+                params['city'] = city
+                
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == '1' and data.get('geocodes'):
+                    geocode = data['geocodes'][0]
+                    
+                    # 提取需要的字段
+                    return {
+                        'address': geocode.get('formatted_address', address),
+                        'province': geocode.get('province', ''),
+                        'city': geocode.get('city', ''),
+                        'district': geocode.get('district', ''),
+                        'adcode': geocode.get('adcode', ''),
+                        'location': {
+                            'lng': float(geocode.get('location', '0,0').split(',')[0]),
+                            'lat': float(geocode.get('location', '0,0').split(',')[1])
+                        },
+                        'source': 'amap_geocode'
+                    }
+            
+            # 如果失败
+            logger.debug(f"高德地理编码API未找到地址: {address} (city: {city})")
+                    
+        except Exception as e:
+            logger.debug(f"高德地理编码API失败: {e}")
+            
         return None
     
     
@@ -68,115 +129,131 @@ class AddressService:
         """使用高德地图API搜索"""
         try:
             url = "https://restapi.amap.com/v3/place/text"
-            params = {
-                'key': self.amap_api_key,
-                'keywords': restaurant_name,
-                'city': city,
-                'types': '050000',  # 餐饮服务
-                'output': 'json',
-                'offset': 1,
-                'page': 1,
-                'extensions': 'all'  # 返回详细信息
-            }
             
-            response = requests.get(url, params=params, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                status = data.get('status', '')
-                info = data.get('info', '')
+            # 定义搜索策略：先搜餐饮，如果没找到再搜所有类型
+            search_strategies = [
+                {'types': '050000'},  # 策略1: 仅搜索餐饮服务
+                {'types': ''}         # 策略2: 搜索所有类型（作为兜底）
+            ]
+            
+            for strategy in search_strategies:
+                params = {
+                    'key': self.amap_api_key,
+                    'keywords': restaurant_name,
+                    'city': city,
+                    'output': 'json',
+                    'offset': 1,
+                    'page': 1,
+                    'extensions': 'all'  # 返回详细信息
+                }
+                # 更新策略参数
+                params.update(strategy)
                 
-                # 如果返回IP白名单错误，记录但不抛出异常（让调用方回退到爬虫方式）
-                if status == '0' and ('INVALID_USER_IP' in info or 'IP' in info or '白名单' in info):
-                    logger.warning(f"高德地图API IP白名单错误: {info}，将回退到爬虫方式")
-                    return None
-                
-                # 如果返回平台类型不匹配错误
-                if status == '0' and 'USERKEY_PLAT_NOMATCH' in info:
-                    logger.warning(f"高德地图API平台类型不匹配: {info}，请检查服务平台设置，将回退到爬虫方式")
-                    return None
-                
-                if status == '1' and data.get('count') != '0':
-                    pois = data.get('pois', [])
-                    if pois:
-                        # 遍历所有结果，找到第一个匹配指定城市的餐厅
-                        poi = None
-                        for p in pois:
-                            cityname = p.get('cityname', '').strip()  # 城市
-                            # 检查城市是否匹配（支持"深圳"匹配"深圳市"）
-                            city_normalized = city.replace('市', '')  # 去掉"市"后缀
-                            cityname_normalized = cityname.replace('市', '')
+                response = requests.get(url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    status = data.get('status', '')
+                    info = data.get('info', '')
+                    
+                    # 如果返回IP白名单错误，记录但不抛出异常（让调用方回退到爬虫方式）
+                    if status == '0' and ('INVALID_USER_IP' in info or 'IP' in info or '白名单' in info):
+                        logger.warning(f"高德地图API IP白名单错误: {info}，将回退到爬虫方式")
+                        return None
+                    
+                    # 如果返回平台类型不匹配错误
+                    if status == '0' and 'USERKEY_PLAT_NOMATCH' in info:
+                        logger.warning(f"高德地图API平台类型不匹配: {info}，请检查服务平台设置，将回退到爬虫方式")
+                        return None
+                    
+                    if status == '1' and data.get('count') != '0':
+                        pois = data.get('pois', [])
+                        if pois:
+                            # 如果指定了城市，遍历所有结果找到第一个匹配的
+                            # 如果没指定城市，直接使用第一个结果（相关度最高）
+                            poi = None
                             
-                            if cityname_normalized == city_normalized or cityname == city:
-                                poi = p
-                                break
-                        
-                        # 如果没有找到匹配城市的餐厅，返回None
-                        if not poi:
-                            logger.debug(f"高德API未找到指定城市({city})的餐厅，返回结果在其他城市")
-                            return None
-                        
-                        # 获取地址组件
-                        pname = poi.get('pname', '').strip()  # 省份
-                        cityname = poi.get('cityname', '').strip()  # 城市
-                        adname = poi.get('adname', '').strip()  # 区县
-                        detail_address = poi.get('address', '').strip()  # 详细地址（街道+门牌号）
-                        
-                        # 构建完整地址：省 + 市 + 区县 + 详细地址
-                        # 避免重复（如果详细地址已包含省市信息）
-                        address_parts = []
-                        
-                        # 如果详细地址不包含省名，添加省
-                        if pname and pname not in detail_address:
-                            address_parts.append(pname)
-                        
-                        # 如果详细地址不包含市名，添加市
-                        # 需要检查多种情况：完整城市名（如"上海市"）和简化城市名（如"上海"）
-                        cityname_normalized = cityname.replace('市', '') if cityname else ''
-                        if cityname:
-                            # 检查详细地址中是否已包含城市名（完整或简化）
-                            if cityname not in detail_address and cityname_normalized not in detail_address:
-                                address_parts.append(cityname)
-                        
-                        # 如果详细地址不包含区县名，添加区县
-                        if adname and adname not in detail_address:
-                            address_parts.append(adname)
-                        
-                        # 拼接完整地址
-                        if address_parts:
-                            full_address = ''.join(address_parts) + detail_address
-                        else:
-                            # 如果详细地址已包含省市信息，直接使用
-                            full_address = detail_address
-                        
-                        # 清理可能的重复城市名（防止出现"上海市上海市"）
-                        full_address = remove_duplicate_city_in_address(full_address)
-                        
-                        # 如果地址为空，使用原始地址字段或至少返回省市区
-                        if not full_address or not full_address.strip():
-                            fallback_parts = [p for p in [pname, cityname, adname, detail_address] if p]
-                            full_address = ''.join(fallback_parts) if fallback_parts else ''
-                        
-                        # 从高德API返回结果中提取区代码并更新映射
-                        adcode = poi.get('adcode', '').strip()
-                        if adname and adcode:
-                            from base.location_utils import update_county_code_from_amap
-                            update_county_code_from_amap(adname, adcode)
-                        
-                        return {
-                            'name': poi.get('name', restaurant_name),
-                            'address': full_address.strip(),
-                            'city': cityname,  # 城市名（直接使用API返回的cityname）
-                            'province': pname,  # 省份
-                            'district': adname,  # 区县
-                            'adcode': adcode,  # 区代码（高德API返回）
-                            'location': {
-                                'lng': float(poi.get('location', '0,0').split(',')[0]),
-                                'lat': float(poi.get('location', '0,0').split(',')[1])
-                            },
-                            'tel': poi.get('tel', ''),
-                            'type': poi.get('type', ''),
-                            'source': 'amap_api'
-                        }
+                            if city:
+                                for p in pois:
+                                    cityname = p.get('cityname', '').strip()  # 城市
+                                    # 检查城市是否匹配（支持"深圳"匹配"深圳市"）
+                                    city_normalized = city.replace('市', '')  # 去掉"市"后缀
+                                    cityname_normalized = cityname.replace('市', '')
+                                    
+                                    if cityname_normalized == city_normalized or cityname == city:
+                                        poi = p
+                                        break
+                            else:
+                                # 没指定城市，直接取第一个
+                                poi = pois[0]
+                            
+                            # 如果找到匹配的POI，处理并返回
+                            if poi:
+                                # 获取地址组件
+                                pname = poi.get('pname', '').strip()  # 省份
+                                cityname = poi.get('cityname', '').strip()  # 城市
+                                adname = poi.get('adname', '').strip()  # 区县
+                                detail_address = poi.get('address', '').strip()  # 详细地址（街道+门牌号）
+                                
+                                # 构建完整地址：省 + 市 + 区县 + 详细地址
+                                # 避免重复（如果详细地址已包含省市信息）
+                                address_parts = []
+                                
+                                # 如果详细地址不包含省名，添加省
+                                if pname and pname not in detail_address:
+                                    address_parts.append(pname)
+                                
+                                # 如果详细地址不包含市名，添加市
+                                # 需要检查多种情况：完整城市名（如"上海市"）和简化城市名（如"上海"）
+                                cityname_normalized = cityname.replace('市', '') if cityname else ''
+                                if cityname:
+                                    # 检查详细地址中是否已包含城市名（完整或简化）
+                                    if cityname not in detail_address and cityname_normalized not in detail_address:
+                                        address_parts.append(cityname)
+                                
+                                # 如果详细地址不包含区县名，添加区县
+                                if adname and adname not in detail_address:
+                                    address_parts.append(adname)
+                                
+                                # 拼接完整地址
+                                if address_parts:
+                                    full_address = ''.join(address_parts) + detail_address
+                                else:
+                                    # 如果详细地址已包含省市信息，直接使用
+                                    full_address = detail_address
+                                
+                                # 清理可能的重复城市名（防止出现"上海市上海市"）
+                                full_address = remove_duplicate_city_in_address(full_address)
+                                
+                                # 如果地址为空，使用原始地址字段或至少返回省市区
+                                if not full_address or not full_address.strip():
+                                    fallback_parts = [p for p in [pname, cityname, adname, detail_address] if p]
+                                    full_address = ''.join(fallback_parts) if fallback_parts else ''
+                                
+                                # 从高德API返回结果中提取区代码并更新映射
+                                adcode = poi.get('adcode', '').strip()
+                                if adname and adcode:
+                                    from base.location_utils import update_county_code_from_amap
+                                    update_county_code_from_amap(adname, adcode)
+                                
+                                return {
+                                    'name': poi.get('name', restaurant_name),
+                                    'address': full_address.strip(),
+                                    'city': cityname,  # 城市名（直接使用API返回的cityname）
+                                    'province': pname,  # 省份
+                                    'district': adname,  # 区县
+                                    'adcode': adcode,  # 区代码（高德API返回）
+                                    'location': {
+                                        'lng': float(poi.get('location', '0,0').split(',')[0]),
+                                        'lat': float(poi.get('location', '0,0').split(',')[1])
+                                    },
+                                    'tel': poi.get('tel', ''),
+                                    'type': poi.get('type', ''),
+                                    'source': 'amap_api'
+                                }
+                
+            # 如果所有策略都失败
+            logger.debug(f"高德API未找到指定城市({city})的餐厅")
+            
         except Exception as e:
             logger.debug(f"高德地图API搜索失败: {e}")
         return None
@@ -266,13 +343,15 @@ def is_address_detailed(address: str) -> bool:
     return True
 
 
-def needs_update(address: Optional[str], city: Optional[str]) -> Tuple[bool, str]:
+def needs_update(address: Optional[str], city: Optional[str], adcode: Optional[str] = None, check_adcode: bool = False) -> Tuple[bool, str]:
     """
     判断是否需要更新地址和城市信息
     
     Args:
         address: 当前地址
         city: 当前城市
+        adcode: 当前地区编码
+        check_adcode: 是否检查地区编码缺失
         
     Returns:
         (是否需要更新, 原因)
@@ -284,6 +363,10 @@ def needs_update(address: Optional[str], city: Optional[str]) -> Tuple[bool, str
     # 城市为空
     if not city or not city.strip():
         return True, "城市为空"
+    
+    # 地区编码为空（如果要求检查）
+    if check_adcode and (not adcode or not str(adcode).strip()):
+        return True, "地区编码为空"
     
     # 地址不详细
     if not is_address_detailed(address):
@@ -302,6 +385,7 @@ def update_restaurant_address_in_db(
     restaurant_name: str,
     current_address: Optional[str],
     current_city: Optional[str],
+    current_adcode: Optional[str] = None,
     search_city: Optional[str] = None,
     dry_run: bool = False,
     update_city: bool = True
@@ -314,6 +398,7 @@ def update_restaurant_address_in_db(
         restaurant_name: 餐厅名称
         current_address: 当前地址
         current_city: 当前城市
+        current_adcode: 当前地区编码
         search_city: 搜索城市（用于高德API，如果为空则使用current_city或从地址提取）
         dry_run: 是否为试运行（不实际更新数据库）
         
@@ -333,59 +418,98 @@ def update_restaurant_address_in_db(
         if not api_city:
             # 常见城市列表，按顺序尝试
             default_cities = ['上海', '北京', '深圳', '广州', '杭州', '成都', '南京', '武汉', '西安', '重庆']
-            api_city = default_cities[0]  # 默认使用第一个城市
-            logger.warning(f"餐厅 {restaurant_name} 无法确定城市，使用默认城市: {api_city}")
+            # 如果是全国搜索失败，这里其实应该更谨慎
+            # api_city = default_cities[0] 
+            logger.warning(f"餐厅 {restaurant_name} 无法确定城市")
         
         # 调用高德API获取地址
-        logger.info(f"正在查询: {restaurant_name} (城市: {api_city})")
+        logger.info(f"正在查询: {restaurant_name} (城市: {api_city or '全国'})")
         api_result = address_service.search_restaurant_address(restaurant_name, city=api_city)
         
-        if not api_result or not api_result.get('address'):
-            return {
-                'success': False,
-                'reason': '高德API未返回结果',
-                'updated': False
-            }
+        # 结果变量初始化
+        new_address = ''
+        new_city = ''
+        new_adcode = ''
         
-        new_address = api_result.get('address', '').strip()
-        new_city = api_result.get('city', '').strip()
+        if api_result and api_result.get('address'):
+             new_address = api_result.get('address', '').strip()
+             new_city = api_result.get('city', '').strip()
+             new_adcode = api_result.get('adcode', '').strip()
         
-        # 如果新地址为空，不更新
+        # 如果API失败或没有返回地址，尝试离线/备用逻辑
         if not new_address:
-            return {
-                'success': False,
-                'reason': 'API返回的地址为空',
-                'updated': False
-            }
+            # 如果当前已有地址，尝试从地址中提取区划信息和adcode
+            if current_address:
+                 # 确保导入在 try 块外部或正确的位置，这里使用局部导入但要确保不出错
+                 extract_district_from_address = None
+                 find_county_code = None
+                 extract_city_from_address_func = None
+                 
+                 try:
+                     from base.location_utils import extract_district_from_address, find_county_code, extract_city_from_address as extract_city_func
+                     extract_city_from_address_func = extract_city_func
+                 except ImportError:
+                     logger.error("无法导入 location_utils")
+                 
+                 if extract_city_from_address_func:
+                     # 提取城市（如果当前没城市）
+                     if not new_city:
+                         new_city = extract_city_from_address_func(current_address) or current_city or ''
+                     
+                     # 提取区县
+                     district = extract_district_from_address(current_address)
+                     if district:
+                         # 尝试查找adcode
+                         found_adcode = find_county_code(district, new_city)
+                         if found_adcode:
+                             new_adcode = found_adcode
+                             logger.info(f"通过本地映射找到adcode: {district} -> {new_adcode}")
+                             # 如果此时有了adcode但没有新地址，我们可以认为当前地址就是有效的
+                             new_address = current_address
+                             
+                             # 如果城市也找到了，补全城市信息
+                             if not new_city:
+                                 # 尝试通过adcode反查城市（虽然目前没有反查功能，但至少可以标记）
+                                 pass
+            
+            if not new_address and not new_adcode:
+                return {
+                    'success': False,
+                    'reason': '高德API未返回结果且无法从现有地址提取',
+                    'updated': False
+                }
         
         # 去掉城市名中的"市"后缀（如果存在）
         if new_city and new_city.endswith('市'):
             new_city = new_city[:-1]
         
         # 如果地址没有变化，跳过更新
-        if new_address == current_address and new_city == current_city:
+        if new_address == current_address and new_city == current_city and new_adcode == current_adcode:
             return {
                 'success': True,
-                'reason': '地址和城市已是最新',
+                'reason': '地址、城市和地区编码已是最新',
                 'updated': False,
                 'address': new_address,
-                'city': new_city
+                'city': new_city,
+                'adcode': new_adcode
             }
         
         # 更新数据库
         if not dry_run:
             if update_city:
-                # 同时更新地址和城市
+                # 同时更新地址、城市和地区编码
                 update_sql = """
                     UPDATE tweets 
                     SET tweets_describe = :address,
-                        tweets_location = :city
+                        tweets_location = :city,
+                        tweets_location_code = :adcode
                     WHERE id = :id
                 """
                 params = {
                     'id': restaurant_id,
                     'address': new_address,  # 不再限制长度
-                    'city': new_city[:50] if new_city else None  # 限制50字符
+                    'city': new_city[:50] if new_city else None,  # 限制50字符
+                    'adcode': new_adcode if new_adcode else None
                 }
             else:
                 # 只更新地址
@@ -400,15 +524,19 @@ def update_restaurant_address_in_db(
                 }
             
             db.execute_update(update_sql, params)
-            logger.info(f"✅ 已更新: {restaurant_name}")
+            logger.info(f"[OK] 已更新: {restaurant_name}")
             logger.info(f"   地址: {current_address} -> {new_address}")
             if new_city:
                 logger.info(f"   城市: {current_city or '无'} -> {new_city}")
+            if new_adcode:
+                logger.info(f"   地区编码: {current_adcode or '无'} -> {new_adcode}")
         else:
             logger.info(f"[试运行] 将更新: {restaurant_name}")
             logger.info(f"   地址: {current_address} -> {new_address}")
             if new_city:
                 logger.info(f"   城市: {current_city or '无'} -> {new_city}")
+            if new_adcode:
+                logger.info(f"   地区编码: {current_adcode or '无'} -> {new_adcode}")
         
         return {
             'success': True,
@@ -416,8 +544,10 @@ def update_restaurant_address_in_db(
             'updated': True,
             'address': new_address,
             'city': new_city,
+            'adcode': new_adcode,
             'old_address': current_address,
-            'old_city': current_city
+            'old_city': current_city,
+            'old_adcode': current_adcode
         }
         
     except Exception as e:
@@ -436,7 +566,8 @@ def batch_update_addresses(
     dry_run: bool = False,
     update_existing: bool = False,
     tweets_type_pid: Optional[int] = None,
-    update_city: bool = True
+    update_city: bool = True,
+    fill_missing_codes: bool = False
 ) -> Dict:
     """
     批量更新数据库中的餐厅地址和城市信息
@@ -449,6 +580,7 @@ def batch_update_addresses(
         update_existing: 是否更新已有地址的记录（False表示只更新空值）
         tweets_type_pid: 推文类型父ID（如果指定，只处理该类型的推文）
         update_city: 是否同时更新城市字段（True表示更新tweets_describe和tweets_location，False表示只更新tweets_describe）
+        fill_missing_codes: 是否补全缺失的地区编码（True表示如果adcode为空也需要更新）
         
     Returns:
         处理结果统计
@@ -460,7 +592,8 @@ def batch_update_addresses(
                 id,
                 tweets_title AS 餐厅名称,
                 tweets_describe AS 地址,
-                tweets_location AS 城市
+                tweets_location AS 城市,
+                tweets_location_code AS 地区编码
             FROM tweets
             WHERE 1=1
         """
@@ -479,7 +612,11 @@ def batch_update_addresses(
         
         # 如果不更新已有地址，只处理空值
         if not update_existing:
-            sql += " AND (tweets_describe IS NULL OR tweets_describe = '')"
+            # 默认情况：地址为空，或者（如果开启fill_missing_codes）地区编码为空
+            if fill_missing_codes:
+                sql += " AND (tweets_describe IS NULL OR tweets_describe = '' OR tweets_location_code IS NULL OR tweets_location_code = '')"
+            else:
+                sql += " AND (tweets_describe IS NULL OR tweets_describe = '')"
         
         # 添加排序
         sql += " ORDER BY create_time DESC"
@@ -495,7 +632,9 @@ def batch_update_addresses(
         if limit:
             logger.info(f"限制数量: {limit}")
         if dry_run:
-            logger.info("⚠️  试运行模式，不会实际更新数据库")
+            logger.info("[!] 试运行模式，不会实际更新数据库")
+        if fill_missing_codes:
+            logger.info("已开启：补全缺失的地区编码")
         
         df = db.execute_query(sql, params if params else None)
         
@@ -509,7 +648,7 @@ def batch_update_addresses(
                 'skipped': 0
             }
         
-        logger.info(f"✅ 查询完成，共找到 {len(df)} 条餐厅记录")
+        logger.info(f"[OK] 查询完成，共找到 {len(df)} 条餐厅记录")
         
         # 统计信息
         stats = {
@@ -526,13 +665,19 @@ def batch_update_addresses(
             restaurant_name = row['餐厅名称']
             current_address = row['地址'] if pd.notna(row['地址']) else None
             current_city = row['城市'] if pd.notna(row['城市']) else None
+            current_adcode = row['地区编码'] if pd.notna(row['地区编码']) else None
             
-            # 如果 update_existing=False，已经在SQL中过滤了空值，这里不需要再判断
-            # 如果 update_existing=True，使用 needs_update 判断是否需要更新
-            if update_existing:
-                needs, reason = needs_update(current_address, current_city)
+            # 如果 update_existing=True 或 fill_missing_codes=True，需要判断是否真的需要更新
+            # (如果 update_existing=False 且 fill_missing_codes=False，SQL已经过滤了，这里不需要判断)
+            if update_existing or fill_missing_codes:
+                needs, reason = needs_update(
+                    current_address, 
+                    current_city, 
+                    current_adcode, 
+                    check_adcode=fill_missing_codes or update_existing
+                )
                 if not needs:
-                    logger.debug(f"跳过: {restaurant_name} - {reason if reason else '地址和城市已完整'}")
+                    logger.debug(f"跳过: {restaurant_name} - {reason if reason else '信息已完整'}")
                     stats['skipped'] += 1
                     continue
                 stats['needs_update'] += 1
@@ -544,6 +689,7 @@ def batch_update_addresses(
             
             logger.info(f"   当前地址: {current_address or '无'}")
             logger.info(f"   当前城市: {current_city or '无'}")
+            logger.info(f"   当前编码: {current_adcode or '无'}")
             
             # 更新地址
             result = update_restaurant_address_in_db(
@@ -551,6 +697,7 @@ def batch_update_addresses(
                 restaurant_name=restaurant_name,
                 current_address=current_address,
                 current_city=current_city,
+                current_adcode=current_adcode,
                 search_city=search_city or current_city,
                 dry_run=dry_run,
                 update_city=update_city
@@ -647,6 +794,12 @@ def main():
         action='store_true',
         help='只更新地址字段，不更新城市字段'
     )
+
+    parser.add_argument(
+        '--fill-missing-codes',
+        action='store_true',
+        help='补全缺失的地区编码（即使地址和城市已存在）'
+    )
     
     args = parser.parse_args()
     
@@ -665,8 +818,10 @@ def main():
             dry_run=args.dry_run,
             update_existing=args.update_existing,
             tweets_type_pid=args.type_pid,
-            update_city=not args.address_only
+            update_city=not args.address_only,
+            fill_missing_codes=args.fill_missing_codes
         )
+
         
         # 打印统计信息
         print("\n" + "=" * 80)
@@ -680,7 +835,7 @@ def main():
         print("=" * 80)
         
         if args.dry_run:
-            print("\n⚠️  这是试运行模式，数据库未实际更新")
+            print("\n[!] 这是试运行模式，数据库未实际更新")
             print("   去掉 --dry-run 参数以实际更新数据库")
         
     except Exception as e:
